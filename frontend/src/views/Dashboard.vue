@@ -155,6 +155,10 @@ const sma200Last = computed(() => lastVal(stock.value?.sma_200))
 const ema20Last  = computed(() => lastVal(stock.value?.ema_20))
 const ema50Last  = computed(() => lastVal(stock.value?.ema_50))
 
+const initialInvested = computed(() =>
+  myPosition.value ? myPosition.value.shares * myPosition.value.buy_price : null
+)
+
 const dayRangePct = computed(() => {
   const s = stock.value
   if (!s?.day_low || !s?.day_high || !s?.current_price) return 0
@@ -276,18 +280,27 @@ const etfHoldingsHeaders = [
 
               <!-- My position P&L (shown only if user holds this stock) -->
               <v-card v-if="myPosition" variant="tonal" :color="myPosition.pnl_dollar >= 0 ? 'success' : 'error'" rounded="lg" class="mt-3 pa-3">
-                <p class="text-caption text-medium-emphasis mb-1">My Position · {{ myPosition.shares }} shares @ {{ fmtPrice(myPosition.buy_price) }}</p>
-                <v-row no-gutters align="center">
+                <p class="text-caption text-medium-emphasis mb-2">My Position · {{ myPosition.shares }} shares @ {{ fmtPrice(myPosition.buy_price) }}</p>
+                <v-row no-gutters align="center" class="mb-1">
                   <v-col>
+                    <p class="text-body-2 font-weight-medium">{{ fmtPrice(initialInvested) }}</p>
+                    <p class="text-caption text-medium-emphasis">Invested</p>
+                  </v-col>
+                  <v-col class="text-right">
                     <p class="text-body-2 font-weight-medium">{{ fmtPrice(myPosition.market_value) }}</p>
                     <p class="text-caption text-medium-emphasis">Market value</p>
+                  </v-col>
+                </v-row>
+                <v-divider class="my-2 opacity-20" />
+                <v-row no-gutters align="center">
+                  <v-col>
+                    <p class="text-caption text-medium-emphasis">Total P&L</p>
                   </v-col>
                   <v-col class="text-right">
                     <p class="text-body-2 font-weight-bold">
                       {{ myPosition.pnl_dollar >= 0 ? '+' : '' }}{{ fmtPrice(myPosition.pnl_dollar) }}
                       ({{ myPosition.pnl_pct >= 0 ? '+' : '' }}{{ myPosition.pnl_pct?.toFixed(2) }}%)
                     </p>
-                    <p class="text-caption text-medium-emphasis">Total P&L</p>
                   </v-col>
                 </v-row>
               </v-card>

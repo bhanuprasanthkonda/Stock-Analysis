@@ -10,7 +10,7 @@
 ### Info Panel (left)
 - Company name and ticker
 - Current price with dollar and percent change from previous close
-- **My Position card** — if the searched stock is in your portfolio, shows shares held, avg cost, current market value, and total P&L (green/red)
+- **My Position card** — if the searched stock is in your portfolio, shows shares held, avg cost, initial amount invested (shares × avg cost), current market value, and total P&L $ + % (green/red)
 - Today's price range bar (low → current → high)
 - 52-week range bar
 - Key stats: open, prev close, day volume, avg volume, market cap
