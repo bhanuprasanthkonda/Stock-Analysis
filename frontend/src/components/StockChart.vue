@@ -190,7 +190,7 @@ function initChart() {
   sma50S  = chart.addLineSeries({ ...lineOpts, color: '#FF9800' })
   sma200S = chart.addLineSeries({ ...lineOpts, color: '#26C6DA' })
   ema20S  = chart.addLineSeries({ ...lineOpts, color: '#9C27B0' })
-  ema50S  = chart.addLineSeries({ ...lineOpts, color: '#AB47BC' })
+  ema50S  = chart.addLineSeries({ ...lineOpts, color: '#E91E63' })
 
   refreshAll()
 
@@ -256,16 +256,16 @@ onBeforeUnmount(() => {
           Price Chart
         </v-col>
         <v-col>
-          <v-chip-group>
-            <v-chip size="small" :color="showSMA20  ? '#2196F3' : ''" variant="flat" @click="showSMA20  = !showSMA20">SMA 20</v-chip>
-            <v-chip size="small" :color="showSMA50  ? '#FF9800' : ''" variant="flat" @click="showSMA50  = !showSMA50">SMA 50</v-chip>
-            <v-chip size="small" :color="showSMA200 ? '#26C6DA' : ''" variant="flat" @click="showSMA200 = !showSMA200">SMA 200</v-chip>
-            <v-chip size="small" :color="showEMA20  ? '#9C27B0' : ''" variant="flat" @click="showEMA20  = !showEMA20">EMA 20</v-chip>
-            <v-chip size="small" :color="showEMA50  ? '#AB47BC' : ''" variant="flat" @click="showEMA50  = !showEMA50">EMA 50</v-chip>
-            <v-chip size="small" :color="showFib    ? '#FFA726' : ''" variant="flat" @click="showFib    = !showFib">Fib</v-chip>
-            <v-chip size="small" :color="showNews   ? '#4CAF50' : ''" variant="flat" @click="showNews   = !showNews">News</v-chip>
-            <v-chip size="small" :color="showVolume ? '#546E7A' : ''" variant="flat" @click="showVolume = !showVolume">Vol</v-chip>
-          </v-chip-group>
+          <div class="d-flex flex-wrap ga-1">
+            <v-chip size="small" :color="showSMA20  ? '#2196F3' : 'grey'" :variant="showSMA20  ? 'flat' : 'text'" @click="showSMA20  = !showSMA20">SMA 20</v-chip>
+            <v-chip size="small" :color="showSMA50  ? '#FF9800' : 'grey'" :variant="showSMA50  ? 'flat' : 'text'" @click="showSMA50  = !showSMA50">SMA 50</v-chip>
+            <v-chip size="small" :color="showSMA200 ? '#26C6DA' : 'grey'" :variant="showSMA200 ? 'flat' : 'text'" @click="showSMA200 = !showSMA200">SMA 200</v-chip>
+            <v-chip size="small" :color="showEMA20  ? '#9C27B0' : 'grey'" :variant="showEMA20  ? 'flat' : 'text'" @click="showEMA20  = !showEMA20">EMA 20</v-chip>
+            <v-chip size="small" :color="showEMA50  ? '#E91E63' : 'grey'" :variant="showEMA50  ? 'flat' : 'text'" @click="showEMA50  = !showEMA50">EMA 50</v-chip>
+            <v-chip size="small" :color="showFib    ? '#FFA726' : 'grey'" :variant="showFib    ? 'flat' : 'text'" @click="showFib    = !showFib">Fib</v-chip>
+            <v-chip size="small" :color="showNews   ? '#4CAF50' : 'grey'" :variant="showNews   ? 'flat' : 'text'" @click="showNews   = !showNews">News</v-chip>
+            <v-chip size="small" :color="showVolume ? '#546E7A' : 'grey'" :variant="showVolume ? 'flat' : 'text'" @click="showVolume = !showVolume">Vol</v-chip>
+          </div>
         </v-col>
       </v-row>
 

@@ -371,7 +371,7 @@ const etfHoldingsHeaders = [
                 <v-col cols="7" class="text-caption text-right">{{ fmtPrice(ema20Last) }}</v-col>
               </v-row>
               <v-row no-gutters class="py-1">
-                <v-col cols="5" class="text-caption" style="color:#AB47BC">EMA 50</v-col>
+                <v-col cols="5" class="text-caption" style="color:#E91E63">EMA 50</v-col>
                 <v-col cols="7" class="text-caption text-right">{{ fmtPrice(ema50Last) }}</v-col>
               </v-row>
 

@@ -149,7 +149,7 @@ ON = solid fill in the line's hex color. OFF = text-only in grey. Example:
 | SMA 50 | `#FF9800` |
 | SMA 200 | `#26C6DA` |
 | EMA 20 | `#9C27B0` |
-| EMA 50 | `#AB47BC` |
+| EMA 50 | `#E91E63` |
 | Vol | `#546E7A` |
 | Fib | `#FFA726` |
 | News | `#4CAF50` |
