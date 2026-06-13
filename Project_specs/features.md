@@ -54,6 +54,12 @@ Switching period auto-selects a sensible default interval (e.g. 1D → 5m, 1W �
 ### News Feed
 - Latest headlines with publisher, timestamp, and sentiment chip (Good / Bad / Neutral)
 
+### ETF Holdings (ETFs and mutual funds only)
+- Full-width table shown automatically when the searched ticker is an ETF or mutual fund
+- Columns: rank (#), Symbol (clickable → opens that stock in the Dashboard), Name, Weight %
+- Weight column includes a mini progress bar scaled to the largest holding
+- Paginated (25 per page); shows "N holdings" chip in the card header
+
 ### Institutional Holders
 - Table: institution name, shares, % outstanding, value, date reported
 

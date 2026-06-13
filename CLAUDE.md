@@ -17,6 +17,7 @@ A local-first stock analysis + portfolio tracker. No cloud, no Docker, no auth, 
 3. **Vuetify-only layouts** — all spacing, color, grid, and alignment via Vuetify props and utility classes (`v-row`, `v-col`, `pa-4`, `text-success`, `text-medium-emphasis`, etc.)
 4. **Vue 3 Composition API only** — always `<script setup>`, never Options API
 5. **No Docker, no auth, no cloud** — keep it local and simple
+6. **Keep `Project_specs/features.md` in sync** — whenever a feature is added or updated in the code, update `Project_specs/features.md` to reflect the change before considering the task complete
 
 ---
 

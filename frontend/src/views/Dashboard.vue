@@ -92,21 +92,22 @@ async function searchStock(sym) {
   signals.value = null
   myPosition.value = null
   try {
-    const [stockRes, newsRes, sigRes] = await Promise.all([
+    const [stockRes, newsRes, sigRes] = await Promise.allSettled([
       api.get(`/stocks/${ticker}?period=1y&interval=1d`),
       api.get(`/stocks/${ticker}/news`),
       api.get(`/stocks/${ticker}/signals`),
     ])
-    stock.value = stockRes.data
-    news.value = newsRes.data
-    signals.value = sigRes.data
-    fetchHistory()
-    fetchMyPosition(ticker)
-  } catch (e) {
-    if (!e.response) {
-      error.value = `Cannot reach backend (http://localhost:8000). Is the server running?`
+    if (stockRes.status === 'rejected') {
+      const e = stockRes.reason
+      error.value = !e.response
+        ? `Cannot reach backend (http://localhost:8000). Is the server running?`
+        : e.response.data?.detail ?? `Server error ${e.response.status} for "${ticker}".`
     } else {
-      error.value = e.response.data?.detail ?? `Server error ${e.response.status} for "${ticker}".`
+      stock.value = stockRes.value.data
+      news.value = newsRes.status === 'fulfilled' ? newsRes.value.data : []
+      signals.value = sigRes.status === 'fulfilled' ? sigRes.value.data : null
+      fetchHistory()
+      fetchMyPosition(ticker)
     }
   } finally {
     loading.value = false
@@ -175,6 +176,14 @@ const holdersHeaders = [
   { title: '% Out',        key: 'pct_out' },
   { title: 'Value (USD)',  key: 'value' },
   { title: 'Date Reported', key: 'date_reported' },
+]
+
+// ── ETF holdings table ────────────────────────────────────────────────────────
+const etfHoldingsHeaders = [
+  { title: '#',       key: 'rank',   width: '60px' },
+  { title: 'Symbol',  key: 'symbol' },
+  { title: 'Name',    key: 'name' },
+  { title: 'Weight',  key: 'weight' },
 ]
 </script>
 
@@ -419,6 +428,61 @@ const holdersHeaders = [
               />
               <p v-if="!news.length" class="text-body-2 text-medium-emphasis pa-2">No news available.</p>
             </v-card-text>
+          </v-card>
+        </v-col>
+      </v-row>
+
+      <!-- ── ETF Holdings (only shown when is_etf) ───────────────────────────── -->
+      <v-row v-if="stock.is_etf" class="mb-4">
+        <v-col cols="12">
+          <v-card rounded="lg">
+            <v-card-title class="text-body-1 font-weight-medium pa-4 pb-2">
+              <v-icon size="18" class="mr-2">mdi-format-list-bulleted</v-icon>
+              ETF Holdings
+              <v-chip size="x-small" variant="tonal" color="primary" class="ml-2">
+                {{ stock.etf_holdings.length }} holdings
+              </v-chip>
+            </v-card-title>
+            <v-data-table
+              :items="stock.etf_holdings.map((h, i) => ({ ...h, rank: i + 1 }))"
+              :headers="etfHoldingsHeaders"
+              density="compact"
+              :items-per-page="25"
+            >
+              <template #item.symbol="{ item }">
+                <v-btn
+                  v-if="item.symbol"
+                  variant="text"
+                  size="small"
+                  color="primary"
+                  class="font-weight-bold pa-0"
+                  @click="searchStock(item.symbol)"
+                >{{ item.symbol }}</v-btn>
+                <span v-else class="text-medium-emphasis">—</span>
+              </template>
+              <template #item.name="{ item }">
+                <span class="text-body-2">{{ item.name || '—' }}</span>
+              </template>
+              <template #item.weight="{ item }">
+                <span v-if="item.weight != null">
+                  <v-progress-linear
+                    :model-value="item.weight"
+                    :max="stock.etf_holdings[0]?.weight || 100"
+                    rounded
+                    height="4"
+                    color="primary"
+                    bg-color="rgba(255,255,255,0.08)"
+                    class="d-inline-flex"
+                    style="width:60px; vertical-align:middle"
+                  />
+                  <span class="text-body-2 ml-2">{{ item.weight.toFixed(2) }}%</span>
+                </span>
+                <span v-else class="text-medium-emphasis">—</span>
+              </template>
+              <template #no-data>
+                <p class="text-body-2 text-medium-emphasis pa-4">No holdings data available.</p>
+              </template>
+            </v-data-table>
           </v-card>
         </v-col>
       </v-row>

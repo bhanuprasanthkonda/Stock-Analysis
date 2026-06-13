@@ -112,6 +112,25 @@ def get_stock(
     except Exception:
         pass
 
+    # ETF / mutual-fund holdings
+    quote_type = info.get("quoteType", "")
+    is_etf = quote_type in ("ETF", "MUTUALFUND")
+    etf_holdings: list[schemas.ETFHolding] = []
+    if is_etf:
+        try:
+            holdings_df = t.funds_data.top_holdings
+            if holdings_df is not None and not holdings_df.empty:
+                for sym, row in holdings_df.iterrows():
+                    raw_weight = _safe_float(row.get("Holding Percent"))
+                    weight = round(raw_weight * 100, 4) if raw_weight is not None else None
+                    etf_holdings.append(schemas.ETFHolding(
+                        symbol=str(sym) if sym else None,
+                        name=str(row.get("Name", "")) or None,
+                        weight=weight,
+                    ))
+        except Exception:
+            pass
+
     return schemas.StockResponse(
         ticker=ticker,
         company_name=info.get("longName") or info.get("shortName") or ticker,
@@ -136,6 +155,8 @@ def get_stock(
             levels=fib_levels,
         ),
         institutional_holders=holders,
+        is_etf=is_etf,
+        etf_holdings=etf_holdings,
     )
 
 
@@ -171,8 +192,6 @@ def get_news(ticker: str):
     ticker = ticker.upper().strip()
     t = yf.Ticker(ticker)
     raw = t.news or []
-    if not raw:
-        raise HTTPException(status_code=404, detail=f"No news found for '{ticker}'")
     return _parse_news(raw)
 
 

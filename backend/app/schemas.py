@@ -69,6 +69,12 @@ class InstitutionalHolder(BaseModel):
     date_reported: Optional[str] = None
 
 
+class ETFHolding(BaseModel):
+    symbol: Optional[str] = None
+    name: Optional[str] = None
+    weight: Optional[float] = None  # percentage weight (e.g. 7.12 means 7.12%)
+
+
 class StockResponse(BaseModel):
     ticker: str
     company_name: str
@@ -89,6 +95,8 @@ class StockResponse(BaseModel):
     ema_50: list[Optional[float]]
     fibonacci: FibonacciLevels
     institutional_holders: list[InstitutionalHolder]
+    is_etf: bool = False
+    etf_holdings: list[ETFHolding] = []
 
 
 # ── News & Signals ────────────────────────────────────────────────────────────
