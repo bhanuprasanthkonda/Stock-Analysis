@@ -8,7 +8,23 @@ Search any ticker to see its candlestick chart, moving averages, Fibonacci level
 
 ## How to Run
 
-Open two terminals from the project root.
+Double-click `start.command` (macOS/Linux) or `start.bat` (Windows) from the project root.
+
+On first run it will automatically:
+- Create a Python virtual environment
+- Install all backend dependencies (`requirements.txt`)
+- Install all frontend packages (`package.json`)
+- Start both servers and open the browser
+
+On subsequent runs it skips the install step and starts immediately.
+
+Press **Ctrl+C** to stop both servers.
+
+---
+
+## Manual Start (optional)
+
+If you prefer to run servers individually, open two terminals from the project root.
 
 **Terminal 1 — Backend** (FastAPI on port 8000)
 ```bash
@@ -26,7 +42,9 @@ API docs available at **http://localhost:8000/docs**.
 
 ---
 
-## First-time Setup
+## First-time Manual Setup
+
+Only needed if you are not using `start.command`.
 
 **Backend**
 ```bash
