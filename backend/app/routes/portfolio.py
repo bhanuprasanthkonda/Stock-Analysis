@@ -60,12 +60,14 @@ def delete_position(entry_id: int, db: Session = Depends(get_db)):
 # ── Search history ────────────────────────────────────────────────────────────
 
 @router.get("/history", response_model=List[schemas.SearchHistoryOut])
-def list_history(db: Session = Depends(get_db)):
-    """Return the 20 most recently searched tickers, newest first.
-    Uniqueness is enforced on insert (old row deleted before new one is added),
-    so each ticker appears at most once in the list.
+def list_history(limit: int = 0, db: Session = Depends(get_db)):
+    """Return recently searched tickers, newest first.
+    limit=0 (default) returns all rows; any positive value caps the result.
     """
-    return db.query(models.SearchHistory).order_by(models.SearchHistory.searched_at.desc()).limit(10).all()
+    q = db.query(models.SearchHistory).order_by(models.SearchHistory.searched_at.desc())
+    if limit > 0:
+        q = q.limit(limit)
+    return q.all()
 
 
 @router.post("/history", response_model=schemas.SearchHistoryOut, status_code=201)

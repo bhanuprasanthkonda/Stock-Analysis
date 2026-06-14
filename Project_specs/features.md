@@ -51,14 +51,19 @@ S&P Fut. (`ES=F`) · Dow Fut. (`YM=F`) · Nasdaq Fut. (`NQ=F`) · Russell Fut. (
 
 Switching period auto-selects a sensible default interval (e.g. 1D → 5m, 1W → 1h, 1M+ → 1d, MAX → 1wk).
 
+**Infinite scroll (continuous history)** — panning left past the start of the current dataset automatically fetches and prepends the next broader period:
+`1D → 5D → 1M → 3M → 6M → 1Y → 2Y → 5Y → MAX`
+The view position is preserved so you see the newly loaded bars without jumping. A "Loading history…" chip appears in the chart header while the fetch is in flight. Expansion silently stops at MAX (no further history available).
+
 **Overlay toggles** (chips, colored to match chart line):
 | Toggle | Color | Default |
 |--------|-------|---------|
-| SMA 20 | Blue `#2196F3` | ON |
 | SMA 50 | Orange `#FF9800` | ON |
-| SMA 200 | Cyan `#26C6DA` | OFF |
-| EMA 20 | Purple `#9C27B0` | OFF |
+| SMA 200 | Cyan `#26C6DA` | ON |
 | EMA 50 | Pink `#E91E63` | OFF |
+| EMA 100 | Deep orange `#FF7043` | OFF |
+| EMA 150 | Green `#66BB6A` | OFF |
+| EMA 200 | Purple `#9C27B0` | OFF |
 | Fib | Amber `#FFA726` | ON |
 | News | Green `#4CAF50` | ON |
 | Vol | Blue-grey `#546E7A` | ON |
@@ -67,6 +72,13 @@ Switching period auto-selects a sensible default interval (e.g. 1D → 5m, 1W �
 - OFF state: text-only chip in grey
 
 **Fibonacci levels** — 7 dashed horizontal price lines (0%, 23.6%, 38.2%, 50%, 61.8%, 78.6%, 100%) calculated from the 60-day high/low
+
+**Trend lines** — automatically detected pivot-based trend lines drawn over the candles:
+- **↑ Trend** (teal `#26A69A`) — uptrend support line connecting the most recent ascending pivot lows
+- **↓ Trend** (red `#EF5350`) — downtrend resistance line connecting the most recent descending pivot highs
+- Each line is extended (projected linearly) to the current date so you can see where support/resistance sits right now
+- Pivot detection uses a ±10 candle window; works for any period/interval combination
+- Both lines are togglable via chips in the chart header
 
 **News markers** — arrows plotted on candles where news was published (green arrow up = positive, red arrow down = negative, grey circle = neutral); deduplicated to one marker per day (highest absolute sentiment score)
 
@@ -77,6 +89,27 @@ Switching period auto-selects a sensible default interval (e.g. 1D → 5m, 1W �
 ### News Feed
 - Latest headlines with publisher, timestamp, and sentiment chip (Good / Bad / Neutral)
 - Related ticker chips shown on each news card; clicking a ticker navigates to its Dashboard; each chip has an ✕ to dismiss it from that card
+
+### Trade Setup
+
+Stacked below the Signals card in the left column of the Dashboard. Provides Fibonacci-based entry/exit levels for the currently viewed stock.
+
+**Best Entry** — the nearest Fibonacci support level at or below the current price, labeled with its retracement percentage. Falls back to current price if no lower support exists.
+
+**My Entry Price (optional)** — a text field to override the entry price used for stop/target calculations. When left empty, all calculations use the live current price.
+
+**Stop Loss** — the nearest Fibonacci level below the effective entry price, with its retracement percentage and % distance from entry shown in red.
+
+**Target 1 (conservative)** — first Fibonacci resistance level above the effective entry price.
+
+**Target 2 (aggressive)** — second Fibonacci resistance level above entry.
+
+**Risk / Reward** — `(Target 1 − entry) / (entry − Stop Loss)`, shown as a color-coded chip:
+- Green (≥ 2:1), Amber (1–2:1), Red (< 1:1)
+
+All levels update instantly when a custom entry price is typed.
+
+---
 
 ### ETF Holdings (ETFs and mutual funds only)
 - Full-width table shown automatically when the searched ticker is an ETF or mutual fund

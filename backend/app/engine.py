@@ -81,6 +81,75 @@ def get_60day_high_low(df: pd.DataFrame) -> tuple[float, float]:
     return float(last_60["High"].max()), float(last_60["Low"].min())
 
 
+# ── Trend lines ──────────────────────────────────────────────────────────────
+
+def calculate_trend_lines(df: pd.DataFrame, window: int = 10) -> dict:
+    """
+    Detect the most recent uptrend support line and downtrend resistance line.
+
+    Pivot high: a candle whose High is the local max within ±window candles.
+    Pivot low:  a candle whose Low  is the local min within ±window candles.
+
+    Uptrend line:   last pair of pivot lows where the second low   is higher (ascending).
+    Downtrend line: last pair of pivot highs where the second high is lower  (descending).
+
+    Both lines are extended (projected linearly) to the final candle's timestamp
+    so they reach the right edge of the chart at the correct price.
+
+    Returns {"uptrend": list | None, "downtrend": list | None}.
+    Each list is three {date (unix int), price} dicts: anchor1, anchor2, projected end.
+    """
+    highs = df["High"].values.astype(float)
+    lows  = df["Low"].values.astype(float)
+    n = len(highs)
+
+    if n < window * 2 + 2:
+        return {"uptrend": None, "downtrend": None}
+
+    ph_idx: list[int] = []
+    pl_idx: list[int] = []
+
+    for i in range(window, n - window):
+        seg_h = highs[i - window : i + window + 1]
+        seg_l = lows[i - window  : i + window + 1]
+        if highs[i] == seg_h.max():
+            ph_idx.append(i)
+        if lows[i] == seg_l.min():
+            pl_idx.append(i)
+
+    def _unix(idx: int) -> int:
+        return int(df.index[idx].timestamp())
+
+    ph_pts = [{"date": _unix(i), "price": round(float(highs[i]), 4)} for i in ph_idx]
+    pl_pts = [{"date": _unix(i), "price": round(float(lows[i]),  4)} for i in pl_idx]
+    last_t = int(df.index[-1].timestamp())
+
+    def _extend(p1: dict, p2: dict) -> list[dict] | None:
+        """Project the line from p1→p2 forward to the last candle's timestamp."""
+        dt = p2["date"] - p1["date"]
+        if dt == 0:
+            return None
+        slope = (p2["price"] - p1["price"]) / dt
+        p3 = round(p1["price"] + slope * (last_t - p1["date"]), 4)
+        return [p1, p2, {"date": last_t, "price": p3}]
+
+    # Uptrend: most recent ascending pivot-low pair
+    uptrend = None
+    for i in range(len(pl_idx) - 1, 0, -1):
+        if pl_pts[i]["price"] > pl_pts[i - 1]["price"]:
+            uptrend = _extend(pl_pts[i - 1], pl_pts[i])
+            break
+
+    # Downtrend: most recent descending pivot-high pair
+    downtrend = None
+    for i in range(len(ph_idx) - 1, 0, -1):
+        if ph_pts[i]["price"] < ph_pts[i - 1]["price"]:
+            downtrend = _extend(ph_pts[i - 1], ph_pts[i])
+            break
+
+    return {"uptrend": uptrend, "downtrend": downtrend}
+
+
 # ── Sentiment ────────────────────────────────────────────────────────────────
 
 def score_headline(text: str) -> tuple[str, float]:

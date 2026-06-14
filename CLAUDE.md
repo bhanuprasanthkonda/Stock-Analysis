@@ -145,14 +145,17 @@ ON = solid fill in the line's hex color. OFF = text-only in grey. Example:
 
 | Indicator | Hex |
 |-----------|-----|
-| SMA 20 | `#2196F3` |
 | SMA 50 | `#FF9800` |
 | SMA 200 | `#26C6DA` |
-| EMA 20 | `#9C27B0` |
 | EMA 50 | `#E91E63` |
+| EMA 100 | `#FF7043` |
+| EMA 150 | `#66BB6A` |
+| EMA 200 | `#9C27B0` |
 | Vol | `#546E7A` |
 | Fib | `#FFA726` |
 | News | `#4CAF50` |
+| ↑ Trend | `#26A69A` |
+| ↓ Trend | `#EF5350` |
 
 ---
 
@@ -193,6 +196,7 @@ Every significant function across the codebase has a JSDoc / docstring comment i
 | `calculate_sma(closes, period)` | SMA with leading `None`s to match input length |
 | `calculate_ema(closes, period)` | EMA seeded with SMA to avoid cold-start spikes |
 | `calculate_fibonacci(high, low)` | 7 standard retracement levels as `{"23.6": price, ...}` |
+| `calculate_trend_lines(df, window=10)` | Pivot-based uptrend support + downtrend resistance lines, each extended to last candle |
 | `extract_ohlcv(df)` | DataFrame → list of `{date(unix), open, high, low, close, volume}` |
 | `get_60day_high_low(df)` | (high, low) over last 60 candles — Fibonacci reference range |
 | `score_headline(text)` | VADER sentiment → `(label, compound)` where label ∈ good/bad/neutral |

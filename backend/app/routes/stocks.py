@@ -248,15 +248,19 @@ def get_stock(
     closes = [c["close"] for c in ohlcv]
 
     # Indicators
-    sma_20  = eng.calculate_sma(closes, 20)
     sma_50  = eng.calculate_sma(closes, 50)
     sma_200 = eng.calculate_sma(closes, 200)
-    ema_20  = eng.calculate_ema(closes, 20)
     ema_50  = eng.calculate_ema(closes, 50)
+    ema_100 = eng.calculate_ema(closes, 100)
+    ema_150 = eng.calculate_ema(closes, 150)
+    ema_200 = eng.calculate_ema(closes, 200)
 
     # Fibonacci (60-day high/low)
     high_60, low_60 = eng.get_60day_high_low(hist)
     fib_levels = eng.calculate_fibonacci(high_60, low_60)
+
+    # Trend lines (pivot-based support / resistance)
+    trend_lines = eng.calculate_trend_lines(hist)
 
     # Institutional holders
     holders: list[schemas.InstitutionalHolder] = []
@@ -308,11 +312,12 @@ def get_stock(
         week_52_high=_safe_float(fast.year_high),
         week_52_low=_safe_float(fast.year_low),
         ohlcv=ohlcv,
-        sma_20=sma_20,
         sma_50=sma_50,
         sma_200=sma_200,
-        ema_20=ema_20,
         ema_50=ema_50,
+        ema_100=ema_100,
+        ema_150=ema_150,
+        ema_200=ema_200,
         fibonacci=schemas.FibonacciLevels(
             high_60d=round(high_60, 4),
             low_60d=round(low_60, 4),
@@ -321,6 +326,7 @@ def get_stock(
         institutional_holders=holders,
         is_etf=is_etf,
         etf_holdings=etf_holdings,
+        trend_lines=trend_lines,
     )
 
 
@@ -357,6 +363,43 @@ def _parse_news(raw: list[dict]) -> list[schemas.NewsItem]:
     return items
 
 
+@router.get("/{ticker}/ohlcv", response_model=schemas.ChartDataResponse)
+def get_chart_data(ticker: str, period: str = "1y", interval: str = "1d"):
+    """Lightweight endpoint for chart history expansion (infinite scroll).
+    Returns only OHLCV + indicators — skips the expensive company-info, holders,
+    and ETF calls so the response is fast enough to feel seamless while panning.
+    """
+    ticker = ticker.upper()
+    try:
+        t = yf.Ticker(ticker)
+        hist = t.history(period=period, interval=interval)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+    if hist.empty:
+        raise HTTPException(status_code=404, detail=f"No OHLCV data for {ticker}")
+
+    ohlcv = eng.extract_ohlcv(hist)
+    closes = [c["close"] for c in ohlcv]
+    high_60, low_60 = eng.get_60day_high_low(hist)
+
+    return schemas.ChartDataResponse(
+        ohlcv=ohlcv,
+        sma_50=eng.calculate_sma(closes, 50),
+        sma_200=eng.calculate_sma(closes, 200),
+        ema_50=eng.calculate_ema(closes, 50),
+        ema_100=eng.calculate_ema(closes, 100),
+        ema_150=eng.calculate_ema(closes, 150),
+        ema_200=eng.calculate_ema(closes, 200),
+        fibonacci=schemas.FibonacciLevels(
+            high_60d=round(high_60, 4),
+            low_60d=round(low_60, 4),
+            levels=eng.calculate_fibonacci(high_60, low_60),
+        ),
+        trend_lines=eng.calculate_trend_lines(hist),
+    )
+
+
 @router.get("/{ticker}/news", response_model=list[schemas.NewsItem])
 def get_news(ticker: str):
     """Return scored news articles for a ticker. Returns [] (not 404) when no
@@ -386,20 +429,20 @@ def get_signals(ticker: str):
     closes = [round(float(v), 4) for v in hist["Close"].tolist()]
     volumes = [int(v) for v in hist["Volume"].tolist()]
 
-    sma_20 = eng.calculate_sma(closes, 20)
-    sma_50 = eng.calculate_sma(closes, 50)
-    ema_20 = eng.calculate_ema(closes, 20)
-    ema_50 = eng.calculate_ema(closes, 50)
+    sma_50  = eng.calculate_sma(closes, 50)
+    sma_200 = eng.calculate_sma(closes, 200)
+    ema_50  = eng.calculate_ema(closes, 50)
+    ema_100 = eng.calculate_ema(closes, 100)
 
     news_items = _parse_news(t.news or [])
     sentiments = [n.sentiment for n in news_items]
 
     result = eng.calculate_signals(
         current_price=closes[-1],
-        sma_20_last=sma_20[-1],
-        sma_50_last=sma_50[-1],
-        ema_20_last=ema_20[-1],
-        ema_50_last=ema_50[-1],
+        sma_20_last=sma_50[-1],    # signals engine uses this slot for fast MA
+        sma_50_last=sma_200[-1],
+        ema_20_last=ema_50[-1],
+        ema_50_last=ema_100[-1],
         news_sentiments=sentiments,
         closes=closes,
         volumes=volumes,

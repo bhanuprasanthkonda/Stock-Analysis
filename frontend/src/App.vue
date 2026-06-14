@@ -10,12 +10,17 @@ const markets = ref([])
 // When all items carry is_futures=true the backend is in futures mode (after hours / weekends).
 const isFutures = computed(() => markets.value.length > 0 && markets.value[0].is_futures)
 
-// Fetch all 8 market items. Called on mount and every 15 seconds.
+// Debounce guard: skip the fetch if a previous one is still in flight.
+// This prevents request stacking when a slow network takes longer than the interval.
+let isFetching = false
 async function fetchMarkets() {
+  if (isFetching) return
+  isFetching = true
   try {
     const res = await api.get('/stocks/markets')
     markets.value = res.data
   } catch {}
+  finally { isFetching = false }
 }
 
 // ── Formatters ────────────────────────────────────────────────────────────────
@@ -30,8 +35,9 @@ let dataTimer = null
 
 onMounted(() => {
   fetchMarkets()
-  // Refresh market data every 15 seconds.
-  dataTimer = setInterval(fetchMarkets, 15_000)
+  // Refresh every 60 seconds. Yahoo Finance data has a 15-min delay, so faster
+  // intervals return identical data while burning through rate limits unnecessarily.
+  dataTimer = setInterval(fetchMarkets, 60_000)
 })
 
 onUnmounted(() => clearInterval(dataTimer))

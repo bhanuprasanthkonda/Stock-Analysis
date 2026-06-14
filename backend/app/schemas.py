@@ -75,6 +75,19 @@ class ETFHolding(BaseModel):
     weight: Optional[float] = None  # percentage weight (e.g. 7.12 means 7.12%)
 
 
+class ChartDataResponse(BaseModel):
+    """Lightweight response for history expansion — chart data only, no company info."""
+    ohlcv: list[OHLCVPoint]
+    sma_50: list[Optional[float]]
+    sma_200: list[Optional[float]]
+    ema_50: list[Optional[float]]
+    ema_100: list[Optional[float]]
+    ema_150: list[Optional[float]]
+    ema_200: list[Optional[float]]
+    fibonacci: FibonacciLevels
+    trend_lines: Optional[dict] = None
+
+
 class StockResponse(BaseModel):
     ticker: str
     company_name: str
@@ -88,15 +101,17 @@ class StockResponse(BaseModel):
     week_52_high: Optional[float]
     week_52_low: Optional[float]
     ohlcv: list[OHLCVPoint]
-    sma_20: list[Optional[float]]
     sma_50: list[Optional[float]]
     sma_200: list[Optional[float]]
-    ema_20: list[Optional[float]]
     ema_50: list[Optional[float]]
+    ema_100: list[Optional[float]]
+    ema_150: list[Optional[float]]
+    ema_200: list[Optional[float]]
     fibonacci: FibonacciLevels
     institutional_holders: list[InstitutionalHolder]
     is_etf: bool = False
     etf_holdings: list[ETFHolding] = []
+    trend_lines: Optional[dict] = None
 
 
 # ── News & Signals ────────────────────────────────────────────────────────────
