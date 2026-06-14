@@ -28,6 +28,11 @@ def init_db():
             conn.execute(text("ALTER TABLE search_history ADD COLUMN company_name VARCHAR"))
             conn.commit()
 
+        wl_cols = [row[1] for row in conn.execute(text("PRAGMA table_info(watchlist_items)")).fetchall()]
+        if wl_cols and 'position' not in wl_cols:
+            conn.execute(text("ALTER TABLE watchlist_items ADD COLUMN position INTEGER NOT NULL DEFAULT 0"))
+            conn.commit()
+
 
 def get_db():
     """FastAPI dependency that yields a SQLAlchemy session and guarantees it is

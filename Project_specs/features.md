@@ -116,12 +116,32 @@ All levels update instantly when a custom entry price is typed.
 - Columns: rank (#), Symbol (clickable → opens that stock in the Dashboard), Name, Weight %
 - Weight column includes a mini progress bar scaled to the largest holding
 - Paginated (25 per page); shows "N holdings" chip in the card header
+- **View in Watchlist** button opens a live preview popup (fullscreen dialog) showing all holdings with live prices — same columns, search, filter, sort, and expandable rows as the Watchlist page; prices are fetched in parallel via `/stocks/bulk` endpoint
+- **Add to Watchlist** button saves all holdings to a new or existing saved watchlist
 
 ### Institutional Holders
 - Table: institution name, shares, % outstanding, value, date reported
 
 ### Fibonacci List
 - Compact list of all 7 Fibonacci price levels
+
+---
+
+## Watchlist
+
+- Dedicated page for tracking tickers of interest without holding a position
+- **Multiple watchlists** — create as many named lists as needed (e.g. "Tech", "ETFs", "Dividend")
+- Left panel shows all watchlists with ticker count; clicking a watchlist loads its items on the right
+- **Add tickers** — type a comma-separated list (e.g. `AAPL, MSFT, NVDA`) and click Add; duplicates within the same watchlist are silently skipped; company name is auto-fetched from yfinance
+- **Table columns:** Ticker (clickable → opens Dashboard), Company, Price, Day Change ($), Day Change % (chip, green/red), Notes, Remove button
+- **Sortable columns** — click any column header to sort ascending/descending
+- **Search** — filter rows by ticker or company name with an inline text field
+- **Filter chips** — All / Gainers / Losers filter above the table
+- **Expandable rows** — click the chevron to reveal: today's price range progress bar, 52-week range progress bar, Prev Close, Market Cap, Avg Volume, After-Hours price & change, Pre-Market price & change
+- **Drag to reorder** — drag handle on each row lets you manually sort (disabled when search/filter/sort is active)
+- Live prices fetched in parallel via ThreadPoolExecutor; extended-hours prices (post-market / pre-market) also fetched
+- Deleting a watchlist removes all its items (cascade)
+- Table extracted into shared `WatchlistTable.vue` component — reused by both the Watchlist page and the ETF preview popup
 
 ---
 

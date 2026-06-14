@@ -185,6 +185,73 @@ def search_stocks(q: str = Query(..., min_length=1)):
         return []
 
 
+@router.get("/bulk", response_model=list[schemas.WatchlistItemOut])
+def get_bulk_prices(tickers: str = Query(..., description="Comma-separated ticker symbols")):
+    """Live price snapshot for multiple tickers without needing a watchlist in the DB.
+    Used by the ETF holdings preview popup. Same data shape as watchlist items.
+    Must be registered before /{ticker} so '/bulk' isn't captured as a ticker symbol.
+    """
+    ticker_list = [t.strip().upper() for t in tickers.split(',') if t.strip()][:100]
+    if not ticker_list:
+        return []
+
+    def _fetch(tkr: str) -> tuple[str, dict]:
+        try:
+            t     = yf.Ticker(tkr)
+            fi    = t.fast_info
+            info  = t.info
+            last  = float(fi.last_price)
+            prev  = float(fi.previous_close)
+            last  = last if last == last else None
+            prev  = prev if prev == prev else None
+            chg   = round(last - prev, 4) if last is not None and prev else None
+            chg_p = round(chg / prev * 100, 2) if chg is not None and prev else None
+            reg   = round(last, 4) if last else None
+            post_p = _safe_float(info.get("postMarketPrice"))
+            post_c = _safe_float(info.get("postMarketChange"))
+            pre_p  = _safe_float(info.get("preMarketPrice"))
+            pre_c  = _safe_float(info.get("preMarketChange"))
+            return tkr, {
+                "company_name":           info.get("longName") or info.get("shortName") or None,
+                "current_price":          reg,
+                "previous_close":         round(prev, 4) if prev else None,
+                "day_change":             chg,
+                "day_change_pct":         chg_p,
+                "day_high":               _safe_float(fi.day_high),
+                "day_low":                _safe_float(fi.day_low),
+                "week_52_high":           _safe_float(fi.year_high),
+                "week_52_low":            _safe_float(fi.year_low),
+                "market_cap":             _safe_int(fi.market_cap),
+                "avg_volume":             _safe_int(fi.three_month_average_volume),
+                "post_market_price":      post_p,
+                "post_market_change":     post_c,
+                "post_market_change_pct": round(post_c / reg * 100, 2) if post_c and reg else None,
+                "pre_market_price":       pre_p,
+                "pre_market_change":      pre_c,
+                "pre_market_change_pct":  round(pre_c / reg * 100, 2) if pre_c and reg else None,
+            }
+        except Exception:
+            return tkr, {}
+
+    prices: dict[str, dict] = {}
+    with ThreadPoolExecutor(max_workers=min(len(ticker_list), 12)) as pool:
+        futures = {pool.submit(_fetch, tkr): tkr for tkr in ticker_list}
+        for future in as_completed(futures):
+            tkr, data = future.result()
+            prices[tkr] = data
+
+    return [
+        schemas.WatchlistItemOut(
+            id=0, watchlist_id=0,
+            ticker=tkr,
+            notes=None, added_at=None,
+            **prices.get(tkr, {}),
+        )
+        for tkr in ticker_list
+        if tkr in prices
+    ]
+
+
 # UI period key → yfinance period string
 _PERIOD_TO_YF: dict[str, str] = {
     "1d": "1d", "1w": "5d", "1mo": "1mo", "3mo": "3mo",
@@ -299,10 +366,20 @@ def get_stock(
             except Exception:
                 pass
 
+    # Extended-hours prices — derive pct from the change/price so the unit is
+    # always consistent (percentage like 1.28 for 1.28%) regardless of yfinance version.
+    reg_price   = _safe_float(fast.last_price)
+    post_price  = _safe_float(info.get("postMarketPrice"))
+    post_change = _safe_float(info.get("postMarketChange"))
+    post_pct    = round(post_change / reg_price * 100, 2) if post_change and reg_price else None
+    pre_price   = _safe_float(info.get("preMarketPrice"))
+    pre_change  = _safe_float(info.get("preMarketChange"))
+    pre_pct     = round(pre_change / reg_price * 100, 2) if pre_change and reg_price else None
+
     return schemas.StockResponse(
         ticker=ticker,
         company_name=info.get("longName") or info.get("shortName") or ticker,
-        current_price=_safe_float(fast.last_price),
+        current_price=reg_price,
         previous_close=_safe_float(info.get("previousClose")),
         day_high=_safe_float(fast.day_high),
         day_low=_safe_float(fast.day_low),
@@ -311,6 +388,12 @@ def get_stock(
         market_cap=_safe_int(fast.market_cap),
         week_52_high=_safe_float(fast.year_high),
         week_52_low=_safe_float(fast.year_low),
+        post_market_price=post_price,
+        post_market_change=post_change,
+        post_market_change_pct=post_pct,
+        pre_market_price=pre_price,
+        pre_market_change=pre_change,
+        pre_market_change_pct=pre_pct,
         ohlcv=ohlcv,
         sma_50=sma_50,
         sma_200=sma_200,
@@ -398,6 +481,25 @@ def get_chart_data(ticker: str, period: str = "1y", interval: str = "1d"):
         ),
         trend_lines=eng.calculate_trend_lines(hist),
     )
+
+
+@router.get("/{ticker}/price", response_model=schemas.PriceResponse)
+def get_price(ticker: str):
+    """Lightweight price snapshot using fast_info only — no OHLCV, no company info.
+    Used by the Dashboard auto-refresh timer so the chart stays visible without
+    re-downloading all historical data.
+    """
+    ticker = ticker.upper().strip()
+    try:
+        fast = yf.Ticker(ticker).fast_info
+        return schemas.PriceResponse(
+            current_price=_safe_float(fast.last_price),
+            previous_close=_safe_float(fast.previous_close),
+            day_high=_safe_float(fast.day_high),
+            day_low=_safe_float(fast.day_low),
+        )
+    except Exception:
+        raise HTTPException(status_code=404, detail=f"Price unavailable for '{ticker}'")
 
 
 @router.get("/{ticker}/news", response_model=list[schemas.NewsItem])

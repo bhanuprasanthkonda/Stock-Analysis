@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import api from '../api'
 
@@ -25,7 +25,17 @@ async function fetchPositions() {
   finally { loadingPositions.value = false }
 }
 
-onMounted(fetchPositions)
+// Silent background refresh — no loading spinner so the table doesn't flicker.
+async function silentRefresh() {
+  try {
+    const res = await api.get('/portfolio/positions')
+    positions.value = res.data
+  } catch { /* ignore auto-refresh errors */ }
+}
+
+let refreshTimer = null
+onMounted(() => { fetchPositions(); refreshTimer = setInterval(silentRefresh, 30_000) })
+onUnmounted(() => clearInterval(refreshTimer))
 
 // Deep-link to the Dashboard with the ticker pre-loaded via query param.
 function goToDashboard(ticker) {

@@ -165,6 +165,7 @@ ON = solid fill in the line's hex color. OFF = text-only in grey. Example:
 |-------|------|-------|
 | `/dashboard` | Dashboard.vue | accepts `?ticker=` query param to auto-search |
 | `/portfolio` | Portfolio.vue | clicking a ticker navigates to `/dashboard?ticker=X` |
+| `/watchlist` | Watchlist.vue | two-panel: list selector left, items table right |
 | `/history` | History.vue | same click behaviour |
 
 ---
@@ -230,6 +231,16 @@ Every significant function across the codebase has a JSDoc / docstring comment i
 | `list_history()` | 20 most recent unique tickers from search history |
 | `mark_read(ticker)` | Remove from history + log to read_stocks table |
 | `list_positions()` | Positions with live P&L; fetches price once per unique ticker |
+
+### `backend/app/routes/watchlist.py`
+| Function | Purpose |
+|----------|---------|
+| `list_watchlists()` | All watchlists with `item_count` each |
+| `create_watchlist(payload)` | Create a named watchlist |
+| `delete_watchlist(wl_id)` | Delete watchlist + all items (manual cascade for SQLite) |
+| `list_items(wl_id)` | Items for a watchlist with live price + day change; batches yfinance calls |
+| `add_items(wl_id, payload)` | Parse comma-separated tickers, skip duplicates, auto-fill company_name, return updated items |
+| `remove_item(wl_id, item_id)` | Remove a single ticker from a watchlist |
 
 ### `frontend/src/components/StockChart.vue`
 | Function | Purpose |

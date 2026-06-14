@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import api from './api'
+import { pageGradientOverride } from './pageState'
 
 const drawer = ref(true)
 
@@ -22,6 +23,37 @@ async function fetchMarkets() {
   } catch {}
   finally { isFetching = false }
 }
+
+// Nasdaq determines the default gradient; Dashboard overrides via pageGradientOverride.
+const nasdaqItem = computed(() => markets.value.find(m => m.label.startsWith('Nasdaq')))
+
+// 'up' | 'down' | null
+const effectiveDir = computed(() => {
+  if (pageGradientOverride.value) return pageGradientOverride.value
+  if (!nasdaqItem.value) return null
+  return nasdaqItem.value.change_pct >= 0 ? 'up' : 'down'
+})
+
+// rgb channel string for the gradient colour (no alpha yet)
+const gradientRgb = computed(() =>
+  effectiveDir.value === 'up' ? '76,175,80' : effectiveDir.value === 'down' ? '239,83,80' : null
+)
+
+// App bar: strong tint at the very top, fades to the surface colour at the bottom
+const appBarStyle = computed(() => {
+  if (!gradientRgb.value) return {}
+  return {
+    'background-image': `linear-gradient(180deg, rgba(${gradientRgb.value},0.28) 0%, transparent 100%)`,
+  }
+})
+
+// Page body: light tint from the top that fades out over ~320px
+const mainStyle = computed(() => {
+  if (!gradientRgb.value) return {}
+  return {
+    'background-image': `linear-gradient(180deg, rgba(${gradientRgb.value},0.13) 0%, transparent 320px)`,
+  }
+})
 
 // ── Formatters ────────────────────────────────────────────────────────────────
 // Comma-formatted price with 2 decimal places (no currency symbol — indices are dimensionless).
@@ -45,12 +77,12 @@ onUnmounted(() => clearInterval(dataTimer))
 
 <template>
   <v-app>
-    <v-navigation-drawer v-model="drawer" permanent width="220">
+    <v-navigation-drawer v-model="drawer" permanent width="220" :style="mainStyle">
       <v-list-item
         prepend-icon="mdi-chart-line"
         title="Stock Analyzer"
         nav
-        class="py-4"
+        class="py-5"
       />
       <v-divider />
       <v-list nav density="compact" class="mt-2">
@@ -64,6 +96,12 @@ onUnmounted(() => clearInterval(dataTimer))
           to="/portfolio"
           prepend-icon="mdi-briefcase-outline"
           title="Portfolio"
+          rounded="lg"
+        />
+        <v-list-item
+          to="/watchlist"
+          prepend-icon="mdi-star-outline"
+          title="Watchlist"
           rounded="lg"
         />
         <v-list-item
@@ -81,7 +119,7 @@ onUnmounted(() => clearInterval(dataTimer))
       </v-list>
     </v-navigation-drawer>
 
-    <v-app-bar flat border="b" color="surface">
+    <v-app-bar flat border="b" color="surface" :style="appBarStyle">
       <v-app-bar-nav-icon @click="drawer = !drawer" />
 
       <!-- App title -->
@@ -123,7 +161,7 @@ onUnmounted(() => clearInterval(dataTimer))
       </div>
     </v-app-bar>
 
-    <v-main>
+    <v-main :style="mainStyle">
       <router-view />
     </v-main>
   </v-app>

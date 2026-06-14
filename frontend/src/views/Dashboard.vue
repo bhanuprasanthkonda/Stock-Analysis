@@ -1,12 +1,15 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import api from '../api'
 import StockChart from '../components/StockChart.vue'
 import Signals from '../components/Signals.vue'
 import NewsCard from '../components/NewsCard.vue'
+import WatchlistTable from '../components/WatchlistTable.vue'
+import { pageGradientOverride } from '../pageState'
 
-const route = useRoute()
+const route  = useRoute()
+const router = useRouter()
 
 const tickerInput   = ref(null)   // selected/searched ticker value
 const searchInput   = ref('')     // raw text in the autocomplete input
@@ -29,6 +32,126 @@ const entryInput = ref('')
 const toast = ref(false)
 const toastMsg = ref('')
 function showToast(msg) { toastMsg.value = msg; toast.value = true }
+
+const successToast = ref(false)
+const successMsg   = ref('')
+function showSuccess(msg) { successMsg.value = msg; successToast.value = true }
+
+// ── ETF holdings → Watchlist ──────────────────────────────────────────────────
+
+// Preview dialog — shows holdings with live prices in a full watchlist-style popup
+const etfPreviewDialog  = ref(false)
+const etfPreviewItems   = ref([])
+const etfPreviewLoading = ref(false)
+
+async function openEtfPreview() {
+  if (!stock.value?.etf_holdings?.length) return
+
+  // Open the dialog immediately with ticker/company data already known from etf_holdings.
+  // Price columns will show '—' until the bulk fetch completes.
+  const holdings = stock.value.etf_holdings.filter(h => h.symbol)
+  etfPreviewItems.value = holdings.map((h, idx) => ({
+    id: idx + 1,
+    watchlist_id: 0,
+    ticker: h.symbol,
+    company_name: h.name || null,
+    notes: null, added_at: null,
+    current_price: null, previous_close: null,
+    day_change: null, day_change_pct: null,
+    day_high: null, day_low: null,
+    week_52_high: null, week_52_low: null,
+    market_cap: null, avg_volume: null,
+    post_market_price: null, post_market_change: null, post_market_change_pct: null,
+    pre_market_price: null, pre_market_change: null, pre_market_change_pct: null,
+  }))
+  etfPreviewDialog.value  = true
+  etfPreviewLoading.value = true
+
+  try {
+    const tickers = holdings.map(h => h.symbol).join(',')
+    const res = await api.get(`/stocks/bulk?tickers=${encodeURIComponent(tickers)}`)
+    // Build a price map then merge — company_name falls back to ETF data if API returns null
+    const priceMap = Object.fromEntries(res.data.map(item => [item.ticker, item]))
+    etfPreviewItems.value = etfPreviewItems.value.map(item => {
+      const p = priceMap[item.ticker]
+      return p ? { ...item, ...p, id: item.id, company_name: p.company_name || item.company_name } : item
+    })
+  } catch { /* keep skeleton items visible — prices stay as '—' */ }
+  finally { etfPreviewLoading.value = false }
+}
+
+// State for the inline "Add to Watchlist" dialog
+const etfWatchlistDialog = ref(false)
+const etfWatchlists      = ref([])
+const etfTargetId        = ref(null)   // null = create new
+const etfNewName         = ref('')
+const etfSaving          = ref(false)
+
+async function openEtfWatchlistDialog() {
+  if (!stock.value?.etf_holdings?.length) return
+  try {
+    etfWatchlists.value = (await api.get('/watchlist/')).data
+  } catch { etfWatchlists.value = [] }
+  etfTargetId.value = etfWatchlists.value[0]?.id ?? null
+  etfNewName.value  = `${stock.value.ticker} Holdings`
+  etfWatchlistDialog.value = true
+}
+
+async function saveEtfToWatchlist() {
+  const tickers = stock.value?.etf_holdings.map(h => h.symbol).filter(Boolean).join(',')
+  if (!tickers) return
+  etfSaving.value = true
+  try {
+    let wlId   = etfTargetId.value
+    let wlName = ''
+    if (!wlId) {
+      const name = etfNewName.value.trim() || `${stock.value.ticker} Holdings`
+      const res  = await api.post('/watchlist/', { name })
+      wlId   = res.data.id
+      wlName = res.data.name
+    } else {
+      wlName = etfWatchlists.value.find(w => w.id === wlId)?.name ?? 'watchlist'
+    }
+    await api.post(`/watchlist/${wlId}/items`, { tickers })
+    etfWatchlistDialog.value = false
+    showSuccess(`Added ${stock.value.etf_holdings.length} holdings to "${wlName}"`)
+  } catch { showToast('Failed to save to watchlist') }
+  finally { etfSaving.value = false }
+}
+
+// Sticky price bar — shown when the main price element scrolls out of view
+const showStickyPrice = ref(false)
+const priceRef = ref(null)
+let priceObserver = null
+
+// Live price auto-refresh — every 30 s while a stock is loaded
+const lastRefreshed = ref(null)
+const lastRefreshedStr = computed(() =>
+  lastRefreshed.value
+    ? lastRefreshed.value.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+    : ''
+)
+let refreshTimer = null
+
+async function refreshPrice() {
+  const sym = String(tickerInput.value || '').trim().toUpperCase()
+  if (!sym || !stock.value) return
+  try {
+    const d = (await api.get(`/stocks/${sym}/price`)).data
+    stock.value = {
+      ...stock.value,
+      current_price:  d.current_price  ?? stock.value.current_price,
+      previous_close: d.previous_close ?? stock.value.previous_close,
+      day_high:       d.day_high       ?? stock.value.day_high,
+      day_low:        d.day_low        ?? stock.value.day_low,
+    }
+    lastRefreshed.value = new Date()
+    if (myPosition.value) {
+      const pos = (await api.get('/portfolio/positions')).data
+      myPosition.value = pos.find(p => p.ticker === sym) ?? myPosition.value
+    }
+  } catch { /* silently ignore refresh errors */ }
+}
 
 // Loads recent search history chips shown below the search bar. Non-critical —
 // failure is silently ignored so it never blocks the main stock load.
@@ -57,6 +180,17 @@ onMounted(() => {
   fetchHistory()
   const t = route.query.ticker
   if (t) searchStock(String(t))
+
+  priceObserver = new IntersectionObserver(
+    ([entry]) => { showStickyPrice.value = !entry.isIntersecting },
+    { threshold: 0 }
+  )
+  refreshTimer = setInterval(refreshPrice, 30_000)
+})
+
+onUnmounted(() => {
+  priceObserver?.disconnect()
+  clearInterval(refreshTimer)
 })
 
 // ── Formatters ────────────────────────────────────────────────────────────────
@@ -113,6 +247,7 @@ async function searchStock(sym) {
   signals.value = null
   myPosition.value = null
   entryInput.value = ''
+  lastRefreshed.value = null
   try {
     const [stockRes, newsRes, sigRes] = await Promise.allSettled([
       api.get(`/stocks/${ticker}?period=1y&interval=1d`),
@@ -251,6 +386,11 @@ const initialInvested = computed(() =>
   myPosition.value ? myPosition.value.shares * myPosition.value.buy_price : null
 )
 
+// Today's dollar P&L for the held position: shares × today's price move
+const dayPnl = computed(() =>
+  myPosition.value ? myPosition.value.shares * priceChange.value : null
+)
+
 const dayRangePct = computed(() => {
   const s = stock.value
   if (!s?.day_low || !s?.day_high || !s?.current_price) return 0
@@ -346,6 +486,21 @@ const etfHoldingsHeaders = [
   { title: 'Name',    key: 'name' },
   { title: 'Weight',  key: 'weight' },
 ]
+
+// Wire up IntersectionObserver whenever the price element enters/leaves the DOM
+watch(priceRef, (el) => {
+  priceObserver?.disconnect()
+  if (el) priceObserver.observe(el)
+  else showStickyPrice.value = false
+})
+
+// Push stock P&L direction to the page gradient. Falls back to Nasdaq (App.vue)
+// when no stock is loaded or when navigating away.
+watch(stock, (s) => { if (!s) pageGradientOverride.value = null })
+watch(priceChange, (v) => {
+  if (stock.value) pageGradientOverride.value = v >= 0 ? 'up' : 'down'
+}, { immediate: true })
+onUnmounted(() => { pageGradientOverride.value = null })
 </script>
 
 <template>
@@ -443,11 +598,38 @@ const etfHoldingsHeaders = [
               <p class="text-body-2 text-medium-emphasis mb-3">{{ stock.company_name }}</p>
 
               <!-- Price + change -->
-              <p class="text-h3 font-weight-bold mb-1">{{ fmtPrice(stock.current_price) }}</p>
+              <p ref="priceRef" class="text-h3 font-weight-bold mb-1">{{ fmtPrice(stock.current_price) }}</p>
               <span :class="changeColor" class="text-body-1 font-weight-medium">
                 {{ changeSign }}{{ fmtPrice(priceChange) }}
                 ({{ changeSign }}{{ priceChangePct.toFixed(2) }}%)
               </span>
+
+              <!-- After-hours price -->
+              <div v-if="stock.post_market_price" class="mt-2 d-flex align-center ga-2">
+                <v-chip size="x-small" color="deep-purple" variant="tonal">After Hours</v-chip>
+                <span class="text-body-2 font-weight-medium">{{ fmtPrice(stock.post_market_price) }}</span>
+                <span :class="stock.post_market_change >= 0 ? 'text-success' : 'text-error'" class="text-caption">
+                  {{ stock.post_market_change >= 0 ? '+' : '' }}{{ fmtPrice(stock.post_market_change) }}
+                  ({{ stock.post_market_change >= 0 ? '+' : '' }}{{ stock.post_market_change_pct?.toFixed(2) }}%)
+                </span>
+              </div>
+
+              <!-- Pre-market price -->
+              <div v-if="stock.pre_market_price" class="mt-2 d-flex align-center ga-2">
+                <v-chip size="x-small" color="orange" variant="tonal">Pre-Market</v-chip>
+                <span class="text-body-2 font-weight-medium">{{ fmtPrice(stock.pre_market_price) }}</span>
+                <span :class="stock.pre_market_change >= 0 ? 'text-success' : 'text-error'" class="text-caption">
+                  {{ stock.pre_market_change >= 0 ? '+' : '' }}{{ fmtPrice(stock.pre_market_change) }}
+                  ({{ stock.pre_market_change >= 0 ? '+' : '' }}{{ stock.pre_market_change_pct?.toFixed(2) }}%)
+                </span>
+              </div>
+
+              <!-- Live refresh indicator -->
+              <div class="d-flex align-center ga-2 mt-2">
+                <v-chip size="x-small" color="success" variant="tonal" prepend-icon="mdi-circle-medium">Live</v-chip>
+                <span v-if="lastRefreshed" class="text-caption text-medium-emphasis">Updated {{ lastRefreshedStr }}</span>
+                <span v-else class="text-caption text-medium-emphasis">Refreshes every 30s</span>
+              </div>
 
               <!-- My position P&L (shown only if user holds this stock) -->
               <v-card v-if="myPosition" variant="tonal" :color="myPosition.pnl_dollar >= 0 ? 'success' : 'error'" rounded="lg" class="mt-3 pa-3">
@@ -463,7 +645,7 @@ const etfHoldingsHeaders = [
                   </v-col>
                 </v-row>
                 <v-divider class="my-2 opacity-20" />
-                <v-row no-gutters align="center">
+                <v-row no-gutters align="center" class="mb-1">
                   <v-col>
                     <p class="text-caption text-medium-emphasis">Total P&L</p>
                   </v-col>
@@ -471,6 +653,17 @@ const etfHoldingsHeaders = [
                     <p class="text-body-2 font-weight-bold">
                       {{ myPosition.pnl_dollar >= 0 ? '+' : '' }}{{ fmtPrice(myPosition.pnl_dollar) }}
                       ({{ myPosition.pnl_pct >= 0 ? '+' : '' }}{{ myPosition.pnl_pct?.toFixed(2) }}%)
+                    </p>
+                  </v-col>
+                </v-row>
+                <v-row no-gutters align="center">
+                  <v-col>
+                    <p class="text-caption text-medium-emphasis">Day P&L</p>
+                  </v-col>
+                  <v-col class="text-right">
+                    <p class="text-body-2 font-weight-bold">
+                      {{ dayPnl >= 0 ? '+' : '' }}{{ fmtPrice(dayPnl) }}
+                      ({{ changeSign }}{{ priceChangePct.toFixed(2) }}%)
                     </p>
                   </v-col>
                 </v-row>
@@ -731,6 +924,22 @@ const etfHoldingsHeaders = [
               <v-btn
                 size="x-small"
                 variant="tonal"
+                color="primary"
+                prepend-icon="mdi-eye-outline"
+                :disabled="!stock.etf_holdings.length"
+                @click="openEtfPreview"
+              >View in Watchlist</v-btn>
+              <v-btn
+                size="x-small"
+                variant="flat"
+                color="primary"
+                prepend-icon="mdi-star-plus-outline"
+                :disabled="!stock.etf_holdings.length"
+                @click="openEtfWatchlistDialog"
+              >Add to Watchlist</v-btn>
+              <v-btn
+                size="x-small"
+                variant="tonal"
                 color="secondary"
                 :href="`https://etfdb.com/etf/${stock.ticker}/#holdings`"
                 target="_blank"
@@ -841,6 +1050,95 @@ const etfHoldingsHeaders = [
 
     </template>
 
+    <!-- Success toast -->
+    <v-snackbar v-model="successToast" color="success" timeout="3000" location="bottom right">
+      <v-icon start>mdi-check-circle</v-icon>
+      {{ successMsg }}
+    </v-snackbar>
+
+    <!-- ETF holdings live preview dialog -->
+    <v-dialog v-model="etfPreviewDialog" max-width="1100" scrollable>
+      <v-card rounded="lg">
+        <v-card-title class="pa-4 pb-0 d-flex align-center flex-wrap ga-2">
+          <v-icon color="primary" class="mr-1">mdi-format-list-bulleted</v-icon>
+          <span class="font-weight-medium">{{ stock?.ticker }} Holdings</span>
+          <v-chip v-if="stock?.etf_holdings?.length" size="x-small" variant="tonal" color="primary" class="ml-1">
+            {{ stock.etf_holdings.length }} tickers
+          </v-chip>
+          <v-spacer />
+          <v-btn
+            size="small"
+            variant="tonal"
+            color="primary"
+            prepend-icon="mdi-star-plus-outline"
+            class="mr-2"
+            @click="etfPreviewDialog = false; openEtfWatchlistDialog()"
+          >Add to Watchlist</v-btn>
+          <v-btn icon="mdi-close" size="small" variant="text" @click="etfPreviewDialog = false" />
+        </v-card-title>
+
+        <!-- Thin progress bar while live prices are being fetched; tickers are already visible -->
+        <v-progress-linear v-if="etfPreviewLoading" indeterminate color="primary" height="2" />
+
+        <WatchlistTable :items="etfPreviewItems" />
+
+        <v-card-actions class="pa-3 pt-0">
+          <span class="text-caption text-medium-emphasis ml-2">
+            <v-icon size="13" class="mr-1">mdi-information-outline</v-icon>
+            Click any ticker to open it on the Dashboard · expand rows for ranges, market cap &amp; after-hours data
+          </span>
+          <v-spacer />
+          <v-btn variant="text" @click="etfPreviewDialog = false">Close</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
+    <!-- Add ETF holdings to watchlist dialog -->
+    <v-dialog v-model="etfWatchlistDialog" max-width="420">
+      <v-card rounded="lg">
+        <v-card-title class="pa-4 pb-2 d-flex align-center ga-2">
+          <v-icon color="primary">mdi-star-plus-outline</v-icon>
+          Add to Watchlist
+        </v-card-title>
+        <v-card-text class="pa-4 pt-1">
+          <p class="text-body-2 text-medium-emphasis mb-4">
+            Add <strong>{{ stock?.etf_holdings?.length }} holdings</strong> from <strong>{{ stock?.ticker }}</strong> to a watchlist.
+          </p>
+
+          <v-select
+            v-if="etfWatchlists.length"
+            v-model="etfTargetId"
+            :items="[{ title: '+ Create new watchlist', value: null }, ...etfWatchlists.map(w => ({ title: w.name, value: w.id }))]"
+            item-title="title"
+            item-value="value"
+            label="Destination watchlist"
+            variant="outlined"
+            density="compact"
+            hide-details
+            class="mb-3"
+          />
+
+          <v-text-field
+            v-if="etfTargetId === null"
+            v-model="etfNewName"
+            label="New watchlist name"
+            variant="outlined"
+            density="compact"
+            hide-details
+          />
+
+          <p v-if="!etfWatchlists.length" class="text-caption text-medium-emphasis mt-1">
+            A new watchlist will be created.
+          </p>
+        </v-card-text>
+        <v-card-actions class="pa-4 pt-0">
+          <v-spacer />
+          <v-btn variant="text" @click="etfWatchlistDialog = false">Cancel</v-btn>
+          <v-btn color="primary" variant="flat" :loading="etfSaving" @click="saveEtfToWatchlist">Save</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
+
     <!-- Toast for period/interval errors — old chart stays visible -->
     <v-snackbar v-model="toast" color="error" timeout="4000" location="bottom right">
       <v-icon start>mdi-alert-circle-outline</v-icon>
@@ -851,4 +1149,82 @@ const etfHoldingsHeaders = [
     </v-snackbar>
 
   </v-container>
+
+  <!-- Sticky price bar — appears when the main price scrolls out of view -->
+  <div
+    v-if="showStickyPrice && stock"
+    :style="{
+      position: 'fixed',
+      top: 'var(--v-layout-top)',
+      left: 'var(--v-layout-left)',
+      right: '0',
+      zIndex: 100,
+      backgroundColor: 'rgb(var(--v-theme-surface))',
+      borderBottom: '1px solid rgba(var(--v-border-color), var(--v-border-opacity))',
+      padding: '6px 24px',
+      display: 'flex',
+      alignItems: 'center',
+      gap: '16px',
+      flexWrap: 'wrap',
+    }"
+  >
+    <!-- Ticker + price + day change -->
+    <span class="text-body-1 font-weight-bold">{{ stock.ticker }}</span>
+    <span class="text-body-1 font-weight-bold">{{ fmtPrice(stock.current_price) }}</span>
+    <span :class="changeColor" class="text-body-2 font-weight-medium">
+      {{ changeSign }}{{ fmtPrice(priceChange) }}
+      ({{ changeSign }}{{ priceChangePct.toFixed(2) }}%)
+    </span>
+
+    <!-- Separator -->
+    <span :style="{ color: 'rgba(var(--v-border-color), 0.5)', fontSize: '18px' }">|</span>
+
+    <!-- Day range -->
+    <span class="text-caption text-medium-emphasis">Day</span>
+    <span class="text-caption text-error">L {{ fmtPrice(stock.day_low) }}</span>
+    <span class="text-caption text-success">H {{ fmtPrice(stock.day_high) }}</span>
+
+    <!-- Separator -->
+    <span :style="{ color: 'rgba(var(--v-border-color), 0.5)', fontSize: '18px' }">|</span>
+
+    <!-- 52-week range -->
+    <span class="text-caption text-medium-emphasis">52W</span>
+    <span class="text-caption text-error">L {{ fmtPrice(stock.week_52_low) }}</span>
+    <span class="text-caption text-success">H {{ fmtPrice(stock.week_52_high) }}</span>
+
+    <!-- Day P&L + Overall P&L for held positions -->
+    <template v-if="myPosition">
+      <span :style="{ color: 'rgba(var(--v-border-color), 0.5)', fontSize: '18px' }">|</span>
+      <span class="text-caption text-medium-emphasis">Day P&L</span>
+      <span :class="dayPnl >= 0 ? 'text-success' : 'text-error'" class="text-caption font-weight-bold">
+        {{ dayPnl >= 0 ? '+' : '' }}{{ fmtPrice(dayPnl) }}
+        ({{ changeSign }}{{ priceChangePct.toFixed(2) }}%)
+      </span>
+      <span :style="{ color: 'rgba(var(--v-border-color), 0.5)', fontSize: '18px' }">|</span>
+      <span class="text-caption text-medium-emphasis">Total P&L</span>
+      <span :class="myPosition.pnl_dollar >= 0 ? 'text-success' : 'text-error'" class="text-caption font-weight-bold">
+        {{ myPosition.pnl_dollar >= 0 ? '+' : '' }}{{ fmtPrice(myPosition.pnl_dollar) }}
+        ({{ myPosition.pnl_pct >= 0 ? '+' : '' }}{{ myPosition.pnl_pct?.toFixed(2) }}%)
+      </span>
+    </template>
+
+    <!-- After-hours or pre-market price -->
+    <template v-if="stock.post_market_price || stock.pre_market_price">
+      <span :style="{ color: 'rgba(var(--v-border-color), 0.5)', fontSize: '18px' }">|</span>
+      <template v-if="stock.post_market_price">
+        <v-chip size="x-small" color="deep-purple" variant="tonal">AH</v-chip>
+        <span class="text-caption font-weight-medium">{{ fmtPrice(stock.post_market_price) }}</span>
+        <span :class="stock.post_market_change >= 0 ? 'text-success' : 'text-error'" class="text-caption">
+          {{ stock.post_market_change >= 0 ? '+' : '' }}{{ stock.post_market_change_pct?.toFixed(2) }}%
+        </span>
+      </template>
+      <template v-else-if="stock.pre_market_price">
+        <v-chip size="x-small" color="orange" variant="tonal">PM</v-chip>
+        <span class="text-caption font-weight-medium">{{ fmtPrice(stock.pre_market_price) }}</span>
+        <span :class="stock.pre_market_change >= 0 ? 'text-success' : 'text-error'" class="text-caption">
+          {{ stock.pre_market_change >= 0 ? '+' : '' }}{{ stock.pre_market_change_pct?.toFixed(2) }}%
+        </span>
+      </template>
+    </template>
+  </div>
 </template>

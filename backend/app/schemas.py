@@ -100,6 +100,13 @@ class StockResponse(BaseModel):
     market_cap: Optional[int]
     week_52_high: Optional[float]
     week_52_low: Optional[float]
+    # Extended-hours prices (None during regular market hours)
+    post_market_price: Optional[float] = None
+    post_market_change: Optional[float] = None
+    post_market_change_pct: Optional[float] = None
+    pre_market_price: Optional[float] = None
+    pre_market_change: Optional[float] = None
+    pre_market_change_pct: Optional[float] = None
     ohlcv: list[OHLCVPoint]
     sma_50: list[Optional[float]]
     sma_200: list[Optional[float]]
@@ -166,6 +173,62 @@ class MarketItem(BaseModel):
     change: float      # absolute change from previous close
     change_pct: float  # percentage change
     is_futures: bool = False  # True outside 7 AM–8 PM ET Mon–Fri → futures mode
+
+
+# ── Watchlist ─────────────────────────────────────────────────────────────────
+
+class WatchlistCreate(BaseModel):
+    name: str
+
+class WatchlistUpdate(BaseModel):
+    name: str
+
+class WatchlistOut(BaseModel):
+    id: int
+    name: str
+    item_count: int
+    created_at: Optional[datetime]
+    model_config = {"from_attributes": True}
+
+class WatchlistItemAdd(BaseModel):
+    tickers: str          # comma-separated, e.g. "AAPL, MSFT, NVDA"
+    notes: Optional[str] = None
+
+class WatchlistReorder(BaseModel):
+    ids: list[int]        # item IDs in the desired order
+
+class WatchlistItemOut(BaseModel):
+    id: int
+    watchlist_id: int
+    ticker: str
+    company_name: Optional[str]
+    notes: Optional[str]
+    added_at: Optional[datetime]
+    current_price: Optional[float] = None
+    previous_close: Optional[float] = None
+    day_change: Optional[float] = None
+    day_change_pct: Optional[float] = None
+    day_high: Optional[float] = None
+    day_low: Optional[float] = None
+    week_52_high: Optional[float] = None
+    week_52_low: Optional[float] = None
+    market_cap: Optional[int] = None
+    avg_volume: Optional[int] = None
+    post_market_price: Optional[float] = None
+    post_market_change: Optional[float] = None
+    post_market_change_pct: Optional[float] = None
+    pre_market_price: Optional[float] = None
+    pre_market_change: Optional[float] = None
+    pre_market_change_pct: Optional[float] = None
+    model_config = {"from_attributes": True}
+
+
+class PriceResponse(BaseModel):
+    """Lightweight price snapshot — fast_info only, no OHLCV or company info."""
+    current_price: Optional[float] = None
+    previous_close: Optional[float] = None
+    day_high: Optional[float] = None
+    day_low: Optional[float] = None
 
 
 # ── Read stocks ───────────────────────────────────────────────────────────────

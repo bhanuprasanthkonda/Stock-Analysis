@@ -57,20 +57,18 @@ if not exist "backend\venv\.install_stamp" (
     echo [2/4] Backend packages up to date.
 )
 
-:: ── Frontend: install npm packages ───────────────────────────────────────────
-if not exist "frontend\node_modules" (
-    echo [3/4] Installing frontend packages...
-    cd frontend
-    npm install
-    if errorlevel 1 (
-        echo ERROR: npm install failed.
-        cd ..
-        pause & exit /b 1
-    )
+:: ── Frontend: always run npm install so new packages are picked up ───────────
+:: npm install is fast when nothing changed; package-lock.json pins exact
+:: versions for reproducible installs across machines.
+echo [3/4] Checking frontend packages...
+cd frontend
+npm install
+if errorlevel 1 (
+    echo ERROR: npm install failed.
     cd ..
-) else (
-    echo [3/4] Frontend packages up to date.
+    pause & exit /b 1
 )
+cd ..
 
 echo [4/4] Starting servers...
 echo.

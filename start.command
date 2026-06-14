@@ -68,17 +68,12 @@ else
     echo "[2/4] Backend packages up to date."
 fi
 
-# ── Frontend: install npm packages if missing or package.json changed ─────────
-NPM_STAMP="$DIR/frontend/node_modules/.install_stamp"
-PKG="$DIR/frontend/package.json"
-if [ ! -d "$DIR/frontend/node_modules" ] || [ ! -f "$NPM_STAMP" ] || [ "$PKG" -nt "$NPM_STAMP" ]; then
-    echo "[3/4] Installing frontend packages..."
-    cd "$DIR/frontend"
-    npm install --silent
-    touch "$NPM_STAMP"
-else
-    echo "[3/4] Frontend packages up to date."
-fi
+# ── Frontend: always run npm install so new/changed packages are picked up ────
+# npm install is fast (no-op) when nothing changed; package-lock.json pins
+# exact versions so installs are reproducible across machines.
+echo "[3/4] Checking frontend packages..."
+cd "$DIR/frontend"
+npm install --silent
 
 echo "[4/4] Starting servers..."
 echo ""
