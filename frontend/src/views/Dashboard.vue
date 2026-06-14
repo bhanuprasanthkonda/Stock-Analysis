@@ -247,7 +247,11 @@ const etfHoldingsHeaders = [
     <!-- Search History -->
     <v-row v-if="searchHistory.length" class="mb-3">
       <v-col cols="12">
-        <v-chip-group>
+        <div class="d-flex align-center ga-1 mb-2">
+          <v-icon size="13" color="medium-emphasis">mdi-history</v-icon>
+          <span class="text-overline text-medium-emphasis">Recent Searches</span>
+        </div>
+        <div class="d-flex flex-wrap ga-2">
           <v-chip
             v-for="h in searchHistory"
             :key="h.ticker"
@@ -259,7 +263,7 @@ const etfHoldingsHeaders = [
             <span class="font-weight-medium">{{ h.ticker }}</span>
             <span v-if="h.company_name" class="text-medium-emphasis ml-1 text-caption">· {{ h.company_name }}</span>
           </v-chip>
-        </v-chip-group>
+        </div>
       </v-col>
     </v-row>
 

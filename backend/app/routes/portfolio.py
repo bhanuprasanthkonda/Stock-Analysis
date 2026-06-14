@@ -65,15 +65,21 @@ def list_history(db: Session = Depends(get_db)):
     Uniqueness is enforced on insert (old row deleted before new one is added),
     so each ticker appears at most once in the list.
     """
-    return db.query(models.SearchHistory).order_by(models.SearchHistory.searched_at.desc()).limit(20).all()
+    return db.query(models.SearchHistory).order_by(models.SearchHistory.searched_at.desc()).limit(10).all()
 
 
 @router.post("/history", response_model=schemas.SearchHistoryOut, status_code=201)
-def log_search(ticker: str, db: Session = Depends(get_db)):
-    """Manually log a ticker search. In practice, search logging happens inside
-    the GET /stocks/{ticker} route which also deletes the old row first.
+def log_search(ticker: str, company_name: str | None = None, db: Session = Depends(get_db)):
+    """Log a ticker to search history with deduplication (delete old row, insert fresh one).
+    Accepts optional company_name so callers that have it can persist it.
+    Called from the News page when a ticker is searched there.
     """
-    entry = models.SearchHistory(ticker=ticker.upper())
+    ticker = ticker.upper()
+    # Preserve an existing company_name when the caller doesn't supply one
+    existing = db.query(models.SearchHistory).filter(models.SearchHistory.ticker == ticker).first()
+    resolved_name = company_name or (existing.company_name if existing else None)
+    db.query(models.SearchHistory).filter(models.SearchHistory.ticker == ticker).delete()
+    entry = models.SearchHistory(ticker=ticker, company_name=resolved_name)
     db.add(entry)
     db.commit()
     db.refresh(entry)

@@ -72,6 +72,15 @@ async function addTickerNews(ticker) {
     const res = await api.get(`/stocks/${ticker}/news`)
     loadedTickers.value = new Set([...loadedTickers.value, ticker])
     mergeNews(res.data.map(n => ({ ...n, source_ticker: ticker })))
+    // Extract company name from the autocomplete suggestion label ("AAPL — Apple Inc.")
+    // before suggestions are cleared in the finally block.
+    const match = suggestions.value.find(s => s.ticker === ticker)
+    const companyName = match ? match.label.split(' — ').slice(1).join(' — ') : null
+    const histParams = companyName
+      ? `ticker=${ticker}&company_name=${encodeURIComponent(companyName)}`
+      : `ticker=${ticker}`
+    api.post(`/portfolio/history?${histParams}`).catch(() => {})
+    fetchSearchHistory()
   } catch {}
   finally {
     loading.value = false
@@ -241,13 +250,16 @@ const fmtDate = iso => iso ? new Date(iso).toLocaleDateString('en-US', { month: 
       </v-col>
     </v-row>
 
-    <!-- Search history chips -->
+    <!-- Search history chips — top 10, wrap naturally into 2 rows -->
     <v-row v-if="searchHistory.length" class="mb-4">
       <v-col cols="12">
-        <div class="d-flex flex-wrap ga-2 align-center">
-          <span class="text-caption text-medium-emphasis mr-1">Recent:</span>
+        <div class="d-flex align-center ga-1 mb-2">
+          <v-icon size="13" color="medium-emphasis">mdi-history</v-icon>
+          <span class="text-overline text-medium-emphasis">Recent Searches</span>
+        </div>
+        <div class="d-flex flex-wrap ga-2">
           <v-chip
-            v-for="h in searchHistory"
+            v-for="h in searchHistory.slice(0, 10)"
             :key="h.ticker"
             size="small"
             :variant="loadedTickers.has(h.ticker) ? 'flat' : 'tonal'"
