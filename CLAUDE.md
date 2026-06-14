@@ -180,3 +180,115 @@ ON = solid fill in the line's hex color. OFF = text-only in grey. Example:
 3. Add `watch(showXxx, ...)` to toggle data
 4. Add a `v-chip` in the template with matching color
 5. Add color to `CLAUDE.md` chart colors table
+
+---
+
+## Function Reference
+
+Every significant function across the codebase has a JSDoc / docstring comment in the source. This section serves as a quick index.
+
+### `backend/app/engine.py`
+| Function | Purpose |
+|----------|---------|
+| `calculate_sma(closes, period)` | SMA with leading `None`s to match input length |
+| `calculate_ema(closes, period)` | EMA seeded with SMA to avoid cold-start spikes |
+| `calculate_fibonacci(high, low)` | 7 standard retracement levels as `{"23.6": price, ...}` |
+| `extract_ohlcv(df)` | DataFrame → list of `{date(unix), open, high, low, close, volume}` |
+| `get_60day_high_low(df)` | (high, low) over last 60 candles — Fibonacci reference range |
+| `score_headline(text)` | VADER sentiment → `(label, compound)` where label ∈ good/bad/neutral |
+| `calculate_signals(...)` | Composite Buy/Sell/Hold: tech 50% + sentiment 35% + volume 15% |
+
+### `backend/app/database.py`
+| Function | Purpose |
+|----------|---------|
+| `init_db()` | Create tables + PRAGMA-based column migrations — called from FastAPI lifespan |
+| `get_db()` | FastAPI dependency: yields SQLAlchemy session, guaranteed close in `finally` |
+
+### `backend/app/routes/stocks.py`
+| Function | Purpose |
+|----------|---------|
+| `_fetch_etfdb_holdings(ticker)` | ETFdb.com holdings via 2-step: page scrape for `by_etf` ID, then paginated data_set API |
+| `_safe_float(val)` | yfinance value → float, `None` for NaN |
+| `_safe_int(val)` | yfinance value → int, `None` for zero (yfinance returns 0 for missing ints) |
+| `search_stocks(q)` | Autocomplete via `yf.Search`; returns `[]` on error |
+| `get_stock(ticker, ...)` | Main stock endpoint: OHLCV + indicators + ETF holdings + institutional holders |
+| `_parse_news(raw)` | Flattens yfinance nested news format into `NewsItem` list |
+| `get_news(ticker)` | Returns `[]` (not 404) when no news — ETFs often have sparse coverage |
+| `get_signals(ticker)` | Composite signal using 6mo history, independent of chart period |
+
+### `backend/app/routes/portfolio.py`
+| Function | Purpose |
+|----------|---------|
+| `list_portfolio()` | All positions, newest first |
+| `add_position(payload)` | Add position; auto-sets `buy_date` to today |
+| `update_position(id, payload)` | Partial update (shares, buy_price, notes only) |
+| `delete_position(id)` | Delete by ID |
+| `list_history()` | 20 most recent unique tickers from search history |
+| `mark_read(ticker)` | Remove from history + log to read_stocks table |
+| `list_positions()` | Positions with live P&L; fetches price once per unique ticker |
+
+### `frontend/src/components/StockChart.vue`
+| Function | Purpose |
+|----------|---------|
+| `onPeriodSelect(p)` | Emits `fetch-data` with the default interval for the chosen period |
+| `onIntervalSelect(i)` | Emits `fetch-data` keeping current period, only candle size changes |
+| `buildCandles()` | OHLCV → lightweight-charts candlestick shape |
+| `buildLine(arr)` | SMA/EMA array (with leading nulls) → `{time, value}` pairs |
+| `buildVolumes()` | Volume bars with green/red tinting based on candle direction |
+| `applyFib()` | Clear + redraw Fibonacci price lines on the candlestick series |
+| `tsToUTCDate(unix)` | Unix seconds → `"YYYY-MM-DD"` in UTC for news marker matching |
+| `applyNewsMarkers()` | One marker per day (highest magnitude article); sorted ascending for lightweight-charts |
+| `initChart()` | Create chart + all series + ResizeObserver |
+| `refreshAll()` | Push fresh data into every series + fit time scale |
+
+### `frontend/src/views/Dashboard.vue`
+| Function | Purpose |
+|----------|---------|
+| `fetchHistory()` | Load search history chips; non-critical, failure silently ignored |
+| `fetchMyPosition(ticker)` | Find current ticker in positions list for the "My Position" card |
+| `onSearchType(text)` | Debounced autocomplete (300ms) |
+| `searchStock(sym)` | Fire stock + news + signals in parallel via `Promise.allSettled` |
+| `onFetchData({period, interval})` | Re-fetch OHLCV only on period/interval change |
+| `lastVal(arr)` | Walk backward through SMA/EMA array to find last non-null value |
+| `initialInvested` | Computed: `shares × buy_price` from position data (no extra API call) |
+
+### `frontend/src/views/News.vue`
+| Function | Purpose |
+|----------|---------|
+| `fetchSearchHistory()` | Load history chips for the toggle row |
+| `loadPortfolioNews()` | Auto-load news for up to 8 portfolio tickers on mount |
+| `addTickerNews(ticker)` | Fetch + merge news for a ticker, mark it loaded |
+| `removeTickerNews(ticker)` | Filter out articles by source_ticker, untrack from loadedTickers |
+| `toggleTicker(ticker)` | Remove if loaded, add if not |
+| `refreshNews()` | Re-fetch all loaded tickers, full replace (not merge), update lastRefreshed |
+| `mergeNews(incoming)` | De-duplicate by title, sort newest-first |
+| `onSearchType(text)` | Debounced autocomplete |
+
+### `frontend/src/views/Portfolio.vue`
+| Function | Purpose |
+|----------|---------|
+| `fetchPositions()` | Load positions with live P&L |
+| `lookupTicker()` | Auto-fill company_name on ticker blur (1d/1d fetch) |
+| `savePosition()` | Validate + POST new position (buy_date set server-side) |
+| `deletePosition(id)` | DELETE by ID + refresh |
+| `saveEdit()` | PATCH shares/buy_price/notes — ticker is immutable |
+
+### `frontend/src/App.vue`
+| Function | Purpose |
+|----------|---------|
+| `fetchMarkets()` | GET /stocks/markets → fills `markets` ref; called on mount + every 15s |
+| `tick(ts)` | rAF callback: decrements `offset` by SPEED px/s, resets seamlessly after one copy width |
+
+### `backend/app/routes/stocks.py` — markets
+| Function | Purpose |
+|----------|---------|
+| `_is_trading_hours()` | True if 7 AM–8 PM ET Mon–Fri (uses `America/New_York` for DST safety) |
+| `_fetch_market_item(label, sym, is_futures)` | Fetch 5d daily history for one symbol, return price + session change |
+| `get_markets()` | Selects spot vs futures tickers based on `_is_trading_hours()`, runs 8 fetches in parallel |
+
+### `frontend/src/components/Signals.vue`
+| Function | Purpose |
+|----------|---------|
+| `crossLabel(v)` / `crossColor(v)` | Golden/death cross → display label + chip color |
+| `trendColor(v)` | bullish/bearish → success/error chip color |
+| `volColor(v)` | Volume signal string (contains 'bullish'/'bearish') → chip color |

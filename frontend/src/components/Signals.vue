@@ -6,9 +6,12 @@ defineProps({
   breakdown: { type: Object, default: () => ({}) },
 })
 
+// Map cross signal string → display label and chip color.
 const crossLabel = v => v === 'golden' ? 'Golden ✓' : v === 'death' ? 'Death ✗' : v
 const crossColor = v => v === 'golden' ? 'success' : v === 'death' ? 'error' : 'default'
+// Map price-vs-MA trend string → chip color.
 const trendColor = v => v === 'bullish' ? 'success' : v === 'bearish' ? 'error' : 'default'
+// Volume signal contains 'bullish'/'bearish' as a substring (e.g. "elevated_bullish").
 const volColor   = v => v?.includes('bullish') ? 'success' : v?.includes('bearish') ? 'error' : 'default'
 </script>
 

@@ -14,11 +14,13 @@ router = APIRouter(prefix="/portfolio", tags=["portfolio"])
 
 @router.get("/", response_model=List[schemas.PortfolioOut])
 def list_portfolio(db: Session = Depends(get_db)):
+    """Return all portfolio positions ordered by creation date (newest first)."""
     return db.query(models.Portfolio).order_by(models.Portfolio.created_at.desc()).all()
 
 
 @router.post("/", response_model=schemas.PortfolioOut, status_code=201)
 def add_position(payload: schemas.PortfolioCreate, db: Session = Depends(get_db)):
+    """Add a new portfolio position. `buy_date` defaults to today if omitted by the caller."""
     data = payload.model_dump()
     data['buy_date'] = data.get('buy_date') or date.today().isoformat()
     entry = models.Portfolio(**data)
@@ -30,6 +32,7 @@ def add_position(payload: schemas.PortfolioCreate, db: Session = Depends(get_db)
 
 @router.put("/{entry_id}", response_model=schemas.PortfolioOut)
 def update_position(entry_id: int, payload: schemas.PortfolioUpdate, db: Session = Depends(get_db)):
+    """Partially update a position. Only fields present in the payload are changed."""
     entry = db.query(models.Portfolio).filter(models.Portfolio.id == entry_id).first()
     if not entry:
         raise HTTPException(status_code=404, detail="Portfolio entry not found")
@@ -46,6 +49,7 @@ def update_position(entry_id: int, payload: schemas.PortfolioUpdate, db: Session
 
 @router.delete("/{entry_id}", status_code=204)
 def delete_position(entry_id: int, db: Session = Depends(get_db)):
+    """Delete a portfolio position by ID. Returns 404 if not found."""
     entry = db.query(models.Portfolio).filter(models.Portfolio.id == entry_id).first()
     if not entry:
         raise HTTPException(status_code=404, detail="Portfolio entry not found")
@@ -57,12 +61,18 @@ def delete_position(entry_id: int, db: Session = Depends(get_db)):
 
 @router.get("/history", response_model=List[schemas.SearchHistoryOut])
 def list_history(db: Session = Depends(get_db)):
-    # One row per ticker (enforced on insert); order newest first
+    """Return the 20 most recently searched tickers, newest first.
+    Uniqueness is enforced on insert (old row deleted before new one is added),
+    so each ticker appears at most once in the list.
+    """
     return db.query(models.SearchHistory).order_by(models.SearchHistory.searched_at.desc()).limit(20).all()
 
 
 @router.post("/history", response_model=schemas.SearchHistoryOut, status_code=201)
 def log_search(ticker: str, db: Session = Depends(get_db)):
+    """Manually log a ticker search. In practice, search logging happens inside
+    the GET /stocks/{ticker} route which also deletes the old row first.
+    """
     entry = models.SearchHistory(ticker=ticker.upper())
     db.add(entry)
     db.commit()
@@ -74,12 +84,11 @@ def log_search(ticker: str, db: Session = Depends(get_db)):
 
 @router.post("/read/{ticker}", response_model=schemas.ReadStockOut, status_code=201)
 def mark_read(ticker: str, db: Session = Depends(get_db)):
+    """Remove ticker from search history and record it in the read_stocks table.
+    Used for cleanup — lets users dismiss tickers they've finished reviewing.
+    """
     ticker = ticker.upper()
-
-    # Remove all search history entries for this ticker
     db.query(models.SearchHistory).filter(models.SearchHistory.ticker == ticker).delete()
-
-    # Log it as read
     read_entry = models.ReadStock(ticker=ticker)
     db.add(read_entry)
     db.commit()
@@ -89,6 +98,7 @@ def mark_read(ticker: str, db: Session = Depends(get_db)):
 
 @router.get("/read", response_model=List[schemas.ReadStockOut])
 def list_read(db: Session = Depends(get_db)):
+    """Return all tickers that have been marked as read, newest first."""
     return db.query(models.ReadStock).order_by(models.ReadStock.marked_read_at.desc()).all()
 
 
@@ -96,6 +106,11 @@ def list_read(db: Session = Depends(get_db)):
 
 @router.get("/positions", response_model=List[schemas.PositionOut])
 def list_positions(db: Session = Depends(get_db)):
+    """Return all positions enriched with live prices and P&L.
+    Prices are fetched once per unique ticker (not once per row) to avoid
+    duplicate yfinance calls when the same ticker has multiple positions.
+    NaN prices are treated as None so the frontend can show '—' gracefully.
+    """
     rows = db.query(models.Portfolio).order_by(models.Portfolio.created_at.desc()).all()
 
     # Fetch live prices once per unique ticker

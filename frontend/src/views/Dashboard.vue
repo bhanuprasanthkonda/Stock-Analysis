@@ -24,6 +24,8 @@ const signals = ref(null)
 const searchHistory = ref([])
 const myPosition = ref(null)
 
+// Loads recent search history chips shown below the search bar. Non-critical —
+// failure is silently ignored so it never blocks the main stock load.
 async function fetchHistory() {
   try {
     const res = await api.get('/portfolio/history')
@@ -31,6 +33,9 @@ async function fetchHistory() {
   } catch { /* non-critical */ }
 }
 
+// Fetches all positions and finds the one matching the currently searched ticker.
+// Pulls the full positions list (with live P&L) rather than a single-ticker endpoint
+// so we get the pre-calculated pnl_dollar and pnl_pct from the backend.
 async function fetchMyPosition(ticker) {
   try {
     const res = await api.get('/portfolio/positions')
@@ -40,6 +45,8 @@ async function fetchMyPosition(ticker) {
   }
 }
 
+// On mount: pre-load history chips and auto-search if the URL has ?ticker=XYZ
+// (used when navigating here from Portfolio or History pages).
 onMounted(() => {
   fetchHistory()
   const t = route.query.ticker
@@ -64,6 +71,9 @@ const fmtVol = v => {
 }
 
 // ── Fetch ─────────────────────────────────────────────────────────────────────
+
+// Debounced autocomplete — fires 300ms after the user stops typing to avoid
+// flooding the backend with a request for every keystroke.
 function onSearchType(text) {
   if (!text || text.length < 2) { suggestions.value = []; return }
   clearTimeout(suggestTimer)
@@ -77,6 +87,11 @@ function onSearchType(text) {
   }, 300)
 }
 
+// Main search handler. Fires three requests in parallel via Promise.allSettled so
+// a missing-news or missing-signals response never blocks the stock data from rendering.
+// Only a failed stock fetch shows an error; news/signals degrade to empty state.
+// The ticker is extracted before the '—' separator in case the user picks from
+// the autocomplete dropdown (which labels items as "AAPL — Apple Inc.").
 async function searchStock(sym) {
   const ticker = String(sym || searchInput.value || '').trim().toUpperCase().split('—')[0].trim()
   if (!ticker) return
@@ -114,6 +129,9 @@ async function searchStock(sym) {
   }
 }
 
+// Called by StockChart when the user selects a different period or candle interval.
+// Only re-fetches OHLCV + indicators — news and signals are period-independent
+// and are not re-requested to avoid unnecessary round trips.
 async function onFetchData({ period, interval }) {
   const sym = String(tickerInput.value || '').trim().toUpperCase()
   if (!sym) return
@@ -139,8 +157,11 @@ const priceChangePct = computed(() => stock.value?.previous_close ? (priceChange
 const changeColor    = computed(() => priceChange.value >= 0 ? 'text-success' : 'text-error')
 const changeSign     = computed(() => priceChange.value >= 0 ? '+' : '')
 
+// Today's open comes from the last OHLCV candle since yfinance doesn't expose it directly.
 const todayOpen = computed(() => stock.value?.ohlcv?.slice(-1)[0]?.open ?? null)
 
+// SMA/EMA arrays start with leading nulls (one per missing period). Walk backward
+// to find the most recent non-null value for display in the info panel.
 const lastVal = arr => {
   if (!arr?.length) return null
   for (let i = arr.length - 1; i >= 0; i--) {
@@ -155,6 +176,7 @@ const sma200Last = computed(() => lastVal(stock.value?.sma_200))
 const ema20Last  = computed(() => lastVal(stock.value?.ema_20))
 const ema50Last  = computed(() => lastVal(stock.value?.ema_50))
 
+// Initial cost basis — computed client-side from existing position data, no extra API call needed.
 const initialInvested = computed(() =>
   myPosition.value ? myPosition.value.shares * myPosition.value.buy_price : null
 )
@@ -449,12 +471,29 @@ const etfHoldingsHeaders = [
       <v-row v-if="stock.is_etf" class="mb-4">
         <v-col cols="12">
           <v-card rounded="lg">
-            <v-card-title class="text-body-1 font-weight-medium pa-4 pb-2">
+            <v-card-title class="text-body-1 font-weight-medium pa-4 pb-2 d-flex align-center flex-wrap ga-2">
               <v-icon size="18" class="mr-2">mdi-format-list-bulleted</v-icon>
               ETF Holdings
-              <v-chip size="x-small" variant="tonal" color="primary" class="ml-2">
+              <v-chip size="x-small" variant="tonal" color="primary">
                 {{ stock.etf_holdings.length }} holdings
               </v-chip>
+              <v-spacer />
+              <v-btn
+                size="x-small"
+                variant="tonal"
+                color="secondary"
+                :href="`https://etfdb.com/etf/${stock.ticker}/#holdings`"
+                target="_blank"
+                prepend-icon="mdi-open-in-new"
+              >ETFdb</v-btn>
+              <v-btn
+                size="x-small"
+                variant="tonal"
+                color="secondary"
+                :href="`https://finance.yahoo.com/quote/${stock.ticker}/holdings`"
+                target="_blank"
+                prepend-icon="mdi-open-in-new"
+              >Yahoo Finance</v-btn>
             </v-card-title>
             <v-data-table
               :items="stock.etf_holdings.map((h, i) => ({ ...h, rank: i + 1 }))"

@@ -9,6 +9,10 @@ _vader = SentimentIntensityAnalyzer()
 
 
 def calculate_sma(closes: list[float], period: int) -> list[Optional[float]]:
+    """Simple moving average over `period` closes.
+    Returns None for the first (period-1) positions so the output length
+    always matches the input — callers can zip it with OHLCV timestamps safely.
+    """
     result: list[Optional[float]] = [None] * (period - 1)
     for i in range(period - 1, len(closes)):
         result.append(round(float(np.mean(closes[i - period + 1 : i + 1])), 4))
@@ -16,6 +20,11 @@ def calculate_sma(closes: list[float], period: int) -> list[Optional[float]]:
 
 
 def calculate_ema(closes: list[float], period: int) -> list[Optional[float]]:
+    """Exponential moving average seeded with the SMA of the first `period` values.
+    Seeding with SMA (instead of the first price) avoids the cold-start spike that
+    occurs when a single extreme price dominates the early EMA. Returns None for
+    the first (period-1) positions to align with the SMA output shape.
+    """
     if len(closes) < period:
         return [None] * len(closes)
 
@@ -34,6 +43,10 @@ def calculate_ema(closes: list[float], period: int) -> list[Optional[float]]:
 
 
 def calculate_fibonacci(high: float, low: float) -> dict[str, float]:
+    """Compute the 7 standard Fibonacci retracement levels between `high` and `low`.
+    Levels are measured from the high downward (high = 0%, low = 100%).
+    Keys are percentage strings (e.g. '23.6', '61.8').
+    """
     diff = high - low
     levels = [0.0, 0.236, 0.382, 0.500, 0.618, 0.786, 1.0]
     return {
@@ -43,6 +56,10 @@ def calculate_fibonacci(high: float, low: float) -> dict[str, float]:
 
 
 def extract_ohlcv(df: pd.DataFrame) -> list[dict]:
+    """Convert a yfinance history DataFrame to a list of OHLCV dicts.
+    Timestamps are stored as Unix seconds (int) — not date strings — so
+    lightweight-charts can handle both daily and intraday data with one code path.
+    """
     records = []
     for ts, row in df.iterrows():
         records.append({
@@ -57,6 +74,9 @@ def extract_ohlcv(df: pd.DataFrame) -> list[dict]:
 
 
 def get_60day_high_low(df: pd.DataFrame) -> tuple[float, float]:
+    """Return the (high, low) over the last 60 candles.
+    Used as the reference range for Fibonacci level calculation.
+    """
     last_60 = df.tail(60)
     return float(last_60["High"].max()), float(last_60["Low"].min())
 
@@ -64,6 +84,10 @@ def get_60day_high_low(df: pd.DataFrame) -> tuple[float, float]:
 # ── Sentiment ────────────────────────────────────────────────────────────────
 
 def score_headline(text: str) -> tuple[str, float]:
+    """Run VADER sentiment analysis on a single headline.
+    Returns a (label, compound_score) tuple.
+    Thresholds: compound >= 0.05 → 'good', <= -0.05 → 'bad', else 'neutral'.
+    """
     compound = _vader.polarity_scores(text)["compound"]
     if compound >= 0.05:
         label = "good"
@@ -86,6 +110,15 @@ def calculate_signals(
     closes: list[float],
     volumes: list[int],
 ) -> dict:
+    """Composite signal engine combining technical, sentiment, and volume factors.
+
+    Weighting: technical indicators 50%, news sentiment 35%, volume signal 15%.
+    Each technical sub-signal is binary (0 = bearish, 100 = bullish); their average
+    forms the tech score. The composite is mapped to Buy / Sell / Hold percentages
+    where Hold peaks at 50 (maximum uncertainty) and falls toward extremes.
+
+    Returns a dict with keys: buy, sell, hold (percentages), breakdown (detail map).
+    """
     breakdown: dict = {}
     tech_signals: list[float] = []
 
@@ -112,7 +145,7 @@ def calculate_signals(
 
     tech_score = sum(tech_signals) / len(tech_signals) if tech_signals else 50.0
 
-    # News sentiment — (good - bad) mapped to 0-100
+    # News sentiment — (good - bad) ratio mapped from [-1, 1] to [0, 100]
     good = sum(1 for s in news_sentiments if s == "good")
     bad = sum(1 for s in news_sentiments if s == "bad")
     total_news = len(news_sentiments)
@@ -124,7 +157,7 @@ def calculate_signals(
     breakdown["news_bad"] = bad
     breakdown["news_neutral"] = total_news - good - bad
 
-    # Volume signal — elevated volume confirms price direction
+    # Volume signal — elevated volume (>15% above avg) confirms price direction
     vol_score = 50.0
     if len(volumes) >= 20 and len(closes) >= 6:
         avg_vol = sum(volumes) / len(volumes)
@@ -138,15 +171,15 @@ def calculate_signals(
     else:
         breakdown["volume"] = "insufficient_data"
 
-    # Composite bull score (0-100)
+    # Composite bull score (0-100): tech 50%, sentiment 35%, volume 15%
     composite = tech_score * 0.50 + sentiment_score * 0.35 + vol_score * 0.15
     breakdown["composite"] = round(composite, 1)
     breakdown["tech_score"] = round(tech_score, 1)
     breakdown["sentiment_score"] = round(sentiment_score, 1)
     breakdown["volume_score"] = round(vol_score, 1)
 
-    # Distribute to Buy / Sell / Hold
-    # hold peaks at 50 (full uncertainty) and falls toward extremes
+    # Map composite → Buy / Sell / Hold
+    # Hold peaks at composite=50 (full uncertainty) and falls toward extremes
     buy_raw = composite
     sell_raw = 100 - composite
     hold_raw = 100 - abs(composite - 50)

@@ -7,6 +7,7 @@ const router = useRouter()
 const history = ref([])
 const loading = ref(false)
 
+// Load the 20 most recent unique searches from the backend (deduped server-side).
 async function fetchHistory() {
   loading.value = true
   try {
@@ -18,6 +19,7 @@ async function fetchHistory() {
 
 onMounted(fetchHistory)
 
+// Navigate to Dashboard with the ticker pre-loaded via ?ticker= query param.
 function goToDashboard(ticker) {
   router.push({ path: '/dashboard', query: { ticker } })
 }

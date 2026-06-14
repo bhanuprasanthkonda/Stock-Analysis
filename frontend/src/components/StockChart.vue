@@ -41,10 +41,13 @@ const DEFAULT_INTERVAL = {
   '5y': '1d', 'max': '1wk',
 }
 
+// Emit fetch-data with the default interval for the chosen period, so the
+// backend returns appropriately sized candles (e.g. 1D → 5m, 1Y → 1d).
 function onPeriodSelect(p) {
   emit('fetch-data', { period: p, interval: DEFAULT_INTERVAL[p] ?? '1d' })
 }
 
+// Emit fetch-data keeping the current period — only the candle size changes.
 function onIntervalSelect(i) {
   emit('fetch-data', { period: props.period, interval: i })
 }
@@ -73,14 +76,19 @@ let fibLines  = []
 let resizeObs = null
 
 // ── Data builders ─────────────────────────────────────────────────────────────
+
+// Map OHLCV records to the shape lightweight-charts expects for candlestick series.
 const buildCandles = () =>
   props.ohlcv.map(c => ({ time: c.date, open: c.open, high: c.high, low: c.low, close: c.close }))
 
+// Map a SMA/EMA array (may contain leading nulls) to {time, value} pairs, skipping nulls.
+// Indexes align with ohlcv so c.date is the correct timestamp for arr[i].
 const buildLine = arr =>
   props.ohlcv
     .map((c, i) => arr?.[i] != null ? { time: c.date, value: arr[i] } : null)
     .filter(Boolean)
 
+// Build volume histogram bars. Color is green-tinted for up-candles, red-tinted for down.
 const buildVolumes = () =>
   props.ohlcv.map(c => ({
     time: c.date,
@@ -94,6 +102,8 @@ const FIB_COLORS = {
   '50.0': '#E91E63', '61.8': '#4CAF50', '78.6': '#9C27B0', '100': '#9E9E9E',
 }
 
+// Clear existing Fibonacci price lines then redraw them on the candlestick series.
+// Price lines must be removed before re-adding — there is no "update" API in lightweight-charts.
 function applyFib() {
   if (!candleS) return
   fibLines.forEach(l => candleS.removePriceLine(l))
@@ -112,11 +122,17 @@ function applyFib() {
 }
 
 // ── News markers ──────────────────────────────────────────────────────────────
+
+// Convert a Unix timestamp (seconds) to a UTC calendar date string "YYYY-MM-DD".
+// Used to match news publication dates against OHLCV candle dates (which are also UTC).
 function tsToUTCDate(unix) {
   const d = new Date(unix * 1000)
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`
 }
 
+// Place one marker per calendar day, keeping only the highest-magnitude article.
+// This prevents stacking when multiple articles land on the same date.
+// Markers are sorted by time because lightweight-charts requires ascending order.
 function applyNewsMarkers() {
   if (!candleS) return
   if (!showNews.value || !props.news?.length) { candleS.setMarkers([]); return }
@@ -144,6 +160,10 @@ function applyNewsMarkers() {
 }
 
 // ── Chart init ────────────────────────────────────────────────────────────────
+
+// Create the lightweight-charts instance, add all series in the right layer order
+// (volume histogram first so it renders behind candles), then call refreshAll().
+// A ResizeObserver keeps the chart width synced with its container.
 function initChart() {
   chart = createChart(chartEl.value, {
     width: chartEl.value.clientWidth,
@@ -200,6 +220,8 @@ function initChart() {
   resizeObs.observe(chartEl.value)
 }
 
+// Push fresh data into every series according to current toggle state, then fit
+// the visible time range so all data is in view after a period change.
 function refreshAll() {
   if (!chart) return
   candleS.setData(buildCandles())
@@ -215,10 +237,14 @@ function refreshAll() {
 }
 
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
+
+// Init on mount only if data is already available (e.g. navigating back with cache).
 onMounted(() => {
   if (props.ohlcv.length) initChart()
 })
 
+// Re-init (first load) or refresh (period/interval change) when OHLCV data arrives.
+// nextTick ensures the DOM container is rendered before lightweight-charts measures it.
 watch(() => props.ohlcv, async val => {
   if (!val.length) return
   await nextTick()
@@ -226,9 +252,11 @@ watch(() => props.ohlcv, async val => {
   else refreshAll()
 })
 
+// Fibonacci and news come from separate backend calls — watch them independently.
 watch(() => props.fibonacci, applyFib)
 watch(() => props.news, applyNewsMarkers)
 
+// Toggle watches: each one flips a single series on/off without a full redraw.
 watch(showFib,    applyFib)
 watch(showNews,   applyNewsMarkers)
 watch(showSMA20,  v => sma20S?.setData(v   ? buildLine(props.sma20)  : []))
@@ -238,6 +266,7 @@ watch(showEMA20,  v => ema20S?.setData(v   ? buildLine(props.ema20)  : []))
 watch(showEMA50,  v => ema50S?.setData(v   ? buildLine(props.ema50)  : []))
 watch(showVolume, v => volS?.setData(v     ? buildVolumes()           : []))
 
+// Disconnect the resize observer and destroy the chart to release WebGL resources.
 onBeforeUnmount(() => {
   resizeObs?.disconnect()
   chart?.remove()

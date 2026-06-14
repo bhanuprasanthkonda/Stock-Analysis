@@ -10,10 +10,12 @@ const positions = ref([])
 const loadingPositions = ref(false)
 const snackbar = ref({ show: false, text: '', color: 'success' })
 
+// Show a bottom-right snackbar. Default color is success; pass 'error' for failures.
 function notify(text, color = 'success') {
   snackbar.value = { show: true, text, color }
 }
 
+// Fetch all positions with live P&L from the backend (prices are fetched server-side).
 async function fetchPositions() {
   loadingPositions.value = true
   try {
@@ -25,6 +27,7 @@ async function fetchPositions() {
 
 onMounted(fetchPositions)
 
+// Deep-link to the Dashboard with the ticker pre-loaded via query param.
 function goToDashboard(ticker) {
   router.push({ path: '/dashboard', query: { ticker } })
 }
@@ -36,11 +39,14 @@ const lookingUp = ref(false)
 const form = ref({ ticker: '', company_name: '', shares: null, buy_price: null, notes: '' })
 const formRef = ref(null)
 
+// Reset the form to blank state and open the add-position dialog.
 function openDialog() {
   form.value = { ticker: '', company_name: '', shares: null, buy_price: null, notes: '' }
   dialog.value = true
 }
 
+// Auto-fill company_name by hitting the stock endpoint on ticker blur.
+// Uses a 1d/1d fetch (cheapest) since we only need company_name from the response.
 async function lookupTicker() {
   const sym = form.value.ticker.trim().toUpperCase()
   if (!sym) return
@@ -54,6 +60,7 @@ async function lookupTicker() {
   finally { lookingUp.value = false }
 }
 
+// Validate the form before POSTing. buy_date is omitted — the backend auto-sets it to today.
 async function savePosition() {
   const { valid } = await formRef.value.validate()
   if (!valid) return
@@ -74,6 +81,7 @@ async function savePosition() {
   } finally { saving.value = false }
 }
 
+// Delete a position by ID then refresh the table.
 async function deletePosition(id) {
   try {
     await api.delete(`/portfolio/${id}`)
@@ -88,6 +96,7 @@ const editSaving = ref(false)
 const editForm = ref({ id: null, ticker: '', company_name: '', shares: null, buy_price: null, notes: '' })
 const editFormRef = ref(null)
 
+// Pre-populate edit form from the row data and open the dialog.
 function openEditDialog(item) {
   editForm.value = {
     id: item.id,
@@ -100,6 +109,7 @@ function openEditDialog(item) {
   editDialog.value = true
 }
 
+// PATCH only shares, buy_price, and notes — ticker and buy_date are immutable after creation.
 async function saveEdit() {
   const { valid } = await editFormRef.value.validate()
   if (!valid) return

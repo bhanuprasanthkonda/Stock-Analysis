@@ -1,4 +1,5 @@
 <script setup>
+import { ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 
 const props = defineProps({
@@ -12,6 +13,15 @@ const props = defineProps({
 })
 
 const router = useRouter()
+
+const visibleTickers = ref([...props.relatedTickers])
+watch(() => props.relatedTickers, val => { visibleTickers.value = [...val] })
+
+const removeTicker = (ticker, e) => {
+  e.preventDefault()
+  e.stopPropagation()
+  visibleTickers.value = visibleTickers.value.filter(t => t !== ticker)
+}
 
 const sentimentColor = s =>
   s === 'good' ? 'success' : s === 'bad' ? 'error' : 'default'
@@ -48,14 +58,16 @@ function openTicker(ticker, e) {
               {{ publisher }}<span v-if="publisher && publishedAt"> · </span>{{ fmtTime(publishedAt) }}
             </p>
             <v-chip
-              v-for="ticker in relatedTickers"
+              v-for="ticker in visibleTickers"
               :key="ticker"
               size="x-small"
               variant="tonal"
               color="primary"
               label
+              closable
               class="mr-1"
               @click="openTicker(ticker, $event)"
+              @click:close="removeTicker(ticker, $event)"
             >
               {{ ticker }}
             </v-chip>

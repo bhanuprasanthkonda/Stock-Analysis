@@ -1,5 +1,28 @@
 # Features — Local Stock Analyzer & Portfolio Tracker
 
+## App Bar — Market Ticker
+
+8 market items are displayed statically across the full width of the app bar.
+
+**During trading hours (7 AM – 8 PM ET, Mon–Fri) — cash indices:**
+S&P 500 (`^GSPC`) · Dow 30 (`^DJI`) · Nasdaq (`^IXIC`) · Russell 2000 (`^RUT`) · VIX · Gold · Bitcoin · Crude Oil
+
+**Outside trading hours (8 PM – 7 AM ET, weekends) — futures:**
+S&P Fut. (`ES=F`) · Dow Fut. (`YM=F`) · Nasdaq Fut. (`NQ=F`) · Russell Fut. (`RTY=F`) · VIX · Gold · Bitcoin · Crude Oil
+
+**Each item shows:** name, price (comma-formatted, 2 dp), and session change (+/−value  +/−%) in green/red.
+
+**Mode indicator:** A label to the left of the items shows "Markets" (globe icon) during session, "Futures" (clock icon, amber) after hours.
+
+**Behavior:**
+- Items are static — they fill the app bar width equally with no scrolling
+- Market data refreshes from backend every **15 seconds**
+- Mode switch (spot ↔ futures) is determined server-side using ET timezone with correct DST handling (`America/New_York`)
+- Shows a skeleton loader while the first fetch is in progress
+- Degrades gracefully (bar stays empty) if the backend is unreachable
+
+---
+
 ## Dashboard
 
 ### Search
@@ -35,7 +58,7 @@ Switching period auto-selects a sensible default interval (e.g. 1D → 5m, 1W �
 | SMA 50 | Orange `#FF9800` | ON |
 | SMA 200 | Cyan `#26C6DA` | OFF |
 | EMA 20 | Purple `#9C27B0` | OFF |
-| EMA 50 | Light purple `#AB47BC` | OFF |
+| EMA 50 | Pink `#E91E63` | OFF |
 | Fib | Amber `#FFA726` | ON |
 | News | Green `#4CAF50` | ON |
 | Vol | Blue-grey `#546E7A` | ON |
@@ -53,6 +76,7 @@ Switching period auto-selects a sensible default interval (e.g. 1D → 5m, 1W �
 
 ### News Feed
 - Latest headlines with publisher, timestamp, and sentiment chip (Good / Bad / Neutral)
+- Related ticker chips shown on each news card; clicking a ticker navigates to its Dashboard; each chip has an ✕ to dismiss it from that card
 
 ### ETF Holdings (ETFs and mutual funds only)
 - Full-width table shown automatically when the searched ticker is an ETF or mutual fund
@@ -84,6 +108,21 @@ Switching period auto-selects a sensible default interval (e.g. 1D → 5m, 1W �
 
 ---
 
+## News
+
+- Dedicated news aggregator page showing headlines across multiple tickers in one table
+- Loads news for portfolio holdings automatically on page load
+- Columns: Ticker (clickable → Dashboard), Headline (linked), Related tickers, Publisher, Sentiment chip, Date
+- **Search history chips** — all previously searched tickers shown as chips; clicking a chip loads that ticker's news into the table; loaded tickers show a ✓ and turn solid-primary
+- "Add ticker" autocomplete to add any ticker's news on demand
+- **Refresh button** — re-fetches news for all currently loaded tickers and replaces stale articles; shows a spinner while loading
+- **Auto-refresh** — news refreshes automatically every 5 minutes while the page is open
+- **Last updated timestamp** — shown next to the page title after the first load/refresh
+- "Clear" button resets the table and clears all loaded tickers
+- Headlines deduplicated by title across tickers; sorted newest-first
+
+---
+
 ## History
 
 - Standalone page showing all previously searched tickers (most recent first)
@@ -102,6 +141,17 @@ Switching period auto-selects a sensible default interval (e.g. 1D → 5m, 1W �
 | Fibonacci | 7 retracement levels from 60-day high/low |
 | VADER sentiment | Per-headline compound score → Good / Bad / Neutral |
 | Signal engine | Composite of SMA/EMA crosses, price vs MA, news ratio, volume trend |
+
+---
+
+## Code Documentation
+
+All functions in the backend and frontend have inline comments explaining:
+- What the function does and why (not just what the name already says)
+- Non-obvious invariants (e.g. why EMA is seeded with SMA, why loadedTickers needs a new Set for reactivity)
+- Edge cases and fallback behavior
+
+A full function index is maintained in `CLAUDE.md` under the **Function Reference** section.
 
 ---
 

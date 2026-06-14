@@ -142,6 +142,17 @@ class PositionOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+# ── Market ticker bar ────────────────────────────────────────────────────────
+
+class MarketItem(BaseModel):
+    label: str         # display name, e.g. "S&P 500" or "S&P Fut."
+    ticker: str        # yfinance symbol, e.g. "^GSPC" or "ES=F"
+    price: float
+    change: float      # absolute change from previous close
+    change_pct: float  # percentage change
+    is_futures: bool = False  # True outside 7 AM–8 PM ET Mon–Fri → futures mode
+
+
 # ── Read stocks ───────────────────────────────────────────────────────────────
 
 class ReadStockOut(BaseModel):
