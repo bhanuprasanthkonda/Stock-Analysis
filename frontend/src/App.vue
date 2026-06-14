@@ -93,6 +93,12 @@ onUnmounted(() => clearInterval(dataTimer))
           rounded="lg"
         />
         <v-list-item
+          to="/recommendations"
+          prepend-icon="mdi-lightbulb-outline"
+          title="Recommendations"
+          rounded="lg"
+        />
+        <v-list-item
           to="/portfolio"
           prepend-icon="mdi-briefcase-outline"
           title="Portfolio"
@@ -114,6 +120,12 @@ onUnmounted(() => clearInterval(dataTimer))
           to="/news"
           prepend-icon="mdi-newspaper-variant-outline"
           title="News"
+          rounded="lg"
+        />
+        <v-list-item
+          to="/intel"
+          prepend-icon="mdi-radar"
+          title="Market Intel"
           rounded="lg"
         />
       </v-list>

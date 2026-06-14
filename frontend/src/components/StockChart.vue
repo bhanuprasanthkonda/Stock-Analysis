@@ -26,7 +26,7 @@ const PERIODS = [
   { key: '1d', label: '1D' }, { key: '1w', label: '1W' },
   { key: '1mo', label: '1M' }, { key: '3mo', label: '3M' },
   { key: '6mo', label: '6M' }, { key: 'ytd', label: 'YTD' },
-  { key: '1y', label: '1Y' }, { key: '2y', label: '2Y' },
+  { key: '1y', label: '1Y' },
   { key: '5y', label: '5Y' }, { key: 'max', label: 'MAX' },
 ]
 
@@ -40,7 +40,7 @@ const INTERVALS = [
 // Default candle interval for each period
 const DEFAULT_INTERVAL = {
   '1d': '5m', '1w': '1h', '1mo': '1d', '3mo': '1d',
-  '6mo': '1d', 'ytd': '1d', '1y': '1d', '2y': '1d',
+  '6mo': '1d', 'ytd': '1d', '1y': '1d',
   '5y': '1d', 'max': '1wk',
 }
 
@@ -94,6 +94,7 @@ let trendUpS        = null
 let trendDownS      = null
 let resizeObs       = null
 let _loadMoreEmitted = false  // prevents duplicate emit before parent sets loadingMore=true
+let _justFitContent  = false  // blocks load-more during the sync range callback fired by fitContent()
 
 // ── Data builders ─────────────────────────────────────────────────────────────
 
@@ -256,7 +257,7 @@ function initChart() {
   // _loadMoreEmitted (module-level) prevents duplicate emits in the brief gap before
   // the parent sets loadingMore=true. It's reset in the loadingMore watch below.
   chart.timeScale().subscribeVisibleLogicalRangeChange(range => {
-    if (!range || props.loadingMore || _loadMoreEmitted) return
+    if (!range || props.loadingMore || _loadMoreEmitted || _justFitContent) return
     if (range.from < 10) {
       _loadMoreEmitted = true
       emit('load-more')
@@ -298,7 +299,11 @@ function refreshAll(fit = true) {
   applyFib()
   applyTrends()
   applyNewsMarkers()
-  if (fit) chart.timeScale().fitContent()
+  if (fit) {
+    _justFitContent = true
+    chart.timeScale().fitContent()  // fires subscribeVisibleLogicalRangeChange synchronously
+    _justFitContent = false
+  }
 }
 
 // ── Lifecycle ─────────────────────────────────────────────────────────────────

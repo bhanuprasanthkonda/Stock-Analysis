@@ -17,13 +17,14 @@ const suggestions   = ref([])
 const suggesting    = ref(false)
 let suggestTimer    = null
 
-const currentPeriod   = ref('1y')
-const currentInterval = ref('1d')
+const currentPeriod   = ref('1d')
+const currentInterval = ref('5m')
 const loading = ref(false)
 const error = ref('')
 const stock = ref(null)
 const news = ref([])
 const signals = ref(null)
+const stockEvents = ref([])
 const searchHistory = ref([])
 const historyLimit = ref(10)   // how many recent-search chips to show; null = show all
 const myPosition = ref(null)
@@ -194,7 +195,13 @@ onUnmounted(() => {
 })
 
 // ── Formatters ────────────────────────────────────────────────────────────────
-const fmtPrice = v => v != null ? `$${Number(v).toFixed(2)}` : '—'
+const fmtPrice   = v => v != null ? `$${Number(v).toFixed(2)}` : '—'
+const fmtRevenue = v => {
+  if (v == null) return '—'
+  if (v >= 1e9)  return `$${(v / 1e9).toFixed(1)}B`
+  if (v >= 1e6)  return `$${(v / 1e6).toFixed(0)}M`
+  return `$${v.toLocaleString()}`
+}
 const fmtCap = v => {
   if (!v) return '—'
   if (v >= 1e12) return `$${(v / 1e12).toFixed(2)}T`
@@ -238,21 +245,23 @@ async function searchStock(sym) {
   tickerInput.value = ticker
   searchInput.value = ticker
   suggestions.value = []
-  currentPeriod.value   = '1y'
-  currentInterval.value = '1d'
+  currentPeriod.value   = '1d'
+  currentInterval.value = '5m'
   loading.value = true
   error.value = ''
   stock.value = null
   news.value = []
   signals.value = null
+  stockEvents.value = []
   myPosition.value = null
   entryInput.value = ''
   lastRefreshed.value = null
   try {
-    const [stockRes, newsRes, sigRes] = await Promise.allSettled([
-      api.get(`/stocks/${ticker}?period=1y&interval=1d`),
+    const [stockRes, newsRes, sigRes, eventsRes] = await Promise.allSettled([
+      api.get(`/stocks/${ticker}?period=1d&interval=5m`),
       api.get(`/stocks/${ticker}/news`),
       api.get(`/stocks/${ticker}/signals`),
+      api.get(`/stocks/${ticker}/events`),
     ])
     if (stockRes.status === 'rejected') {
       const e = stockRes.reason
@@ -263,6 +272,7 @@ async function searchStock(sym) {
       stock.value = stockRes.value.data
       news.value = newsRes.status === 'fulfilled' ? newsRes.value.data : []
       signals.value = sigRes.status === 'fulfilled' ? sigRes.value.data : null
+      stockEvents.value = eventsRes.status === 'fulfilled' ? eventsRes.value.data : []
       fetchHistory()
       fetchMyPosition(ticker)
     }
@@ -277,7 +287,7 @@ async function searchStock(sym) {
 // past the beginning of the current dataset.
 const NEXT_PERIOD = {
   '1d': '5d', '5d': '1mo', '1mo': '3mo', '3mo': '6mo',
-  '6mo': '1y', '1y': '2y', '2y': '5y', '5y': 'max',
+  '6mo': '1y', '1y': '5y', '5y': 'max',
 }
 
 const isExpandingHistory = ref(false)
@@ -885,6 +895,57 @@ onUnmounted(() => { pageGradientOverride.value = null })
 
             </v-card-text>
           </v-card>
+
+          <!-- Upcoming Events (earnings, dividends) -->
+          <v-card v-if="stockEvents.length" rounded="lg" class="mt-4">
+            <v-card-title class="text-body-1 font-weight-medium pa-4 pb-2">
+              <v-icon size="18" class="mr-2">mdi-calendar-star</v-icon>
+              Upcoming Events
+            </v-card-title>
+            <v-card-text class="pa-4 pt-0">
+              <div
+                v-for="(ev, i) in stockEvents"
+                :key="i"
+                :class="i < stockEvents.length - 1 ? 'mb-3' : ''"
+              >
+                <div class="d-flex align-center justify-space-between mb-1">
+                  <div class="d-flex align-center" style="gap:8px">
+                    <v-icon
+                      size="16"
+                      :color="ev.type === 'earnings' ? 'warning' : 'success'"
+                    >{{ ev.type === 'earnings' ? 'mdi-chart-bar' : 'mdi-cash-multiple' }}</v-icon>
+                    <span class="text-body-2 font-weight-medium">{{ ev.label }}</span>
+                  </div>
+                  <v-chip
+                    size="x-small"
+                    :color="ev.days_until != null && ev.days_until >= 0 && ev.days_until <= 7
+                      ? 'error'
+                      : ev.days_until != null && ev.days_until >= 0
+                        ? 'warning'
+                        : 'default'"
+                    variant="tonal"
+                  >{{ ev.days_label }}</v-chip>
+                </div>
+                <div class="text-caption text-medium-emphasis mb-1">
+                  {{ ev.date }}{{ ev.date_end ? ' – ' + ev.date_end : '' }}
+                </div>
+                <!-- EPS & Revenue estimates (earnings only) -->
+                <div v-if="ev.type === 'earnings' && (ev.eps_estimate != null || ev.revenue_estimate != null)" class="d-flex flex-wrap" style="gap:6px">
+                  <v-chip v-if="ev.eps_estimate != null" size="x-small" variant="tonal" color="primary">
+                    EPS est. ${{ ev.eps_estimate }}
+                    <span v-if="ev.eps_low != null && ev.eps_high != null" class="text-medium-emphasis ml-1">
+                      (${{ ev.eps_low }}–${{ ev.eps_high }})
+                    </span>
+                  </v-chip>
+                  <v-chip v-if="ev.revenue_estimate != null" size="x-small" variant="tonal" color="primary">
+                    Rev. est. {{ fmtRevenue(ev.revenue_estimate) }}
+                  </v-chip>
+                </div>
+                <v-divider v-if="i < stockEvents.length - 1" class="mt-3" />
+              </div>
+            </v-card-text>
+          </v-card>
+
         </v-col>
         <v-col cols="12" md="8">
           <v-card rounded="lg">

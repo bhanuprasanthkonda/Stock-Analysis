@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
 
 from app.database import init_db
-from app.routes import portfolio, stocks, watchlist as watchlist_router
+from app.routes import portfolio, stocks, watchlist as watchlist_router, recommendations as rec_router, intel as intel_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -40,6 +40,8 @@ app.add_middleware(
 app.include_router(portfolio.router)
 app.include_router(stocks.router)
 app.include_router(watchlist_router.router)
+app.include_router(rec_router.router)
+app.include_router(intel_router.router)
 
 
 @app.exception_handler(Exception)

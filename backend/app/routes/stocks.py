@@ -1,5 +1,6 @@
 import re
 import html as html_lib
+import logging
 import yfinance as yf
 import pandas as pd
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -13,6 +14,7 @@ from app.database import get_db
 from app import models, schemas, engine as eng
 
 router = APIRouter(prefix="/stocks", tags=["stocks"])
+logger = logging.getLogger(__name__)
 
 # Regex to extract ticker symbol from ETFdb's HTML-encoded symbol column
 # e.g. '<a href="/stock/NVDA/"><span class="caps">NVDA</span></a>' → 'NVDA'
@@ -172,14 +174,25 @@ def search_stocks(q: str = Query(..., min_length=1)):
     Returns [] on any error so the frontend autocomplete degrades gracefully.
     """
     try:
-        results = yf.Search(q, max_results=8)
+        results = yf.Search(q.upper(), max_results=20)
         quotes = results.quotes or []
+        # Only return equities, ETFs, and mutual funds.
+        # Exclude forex pairs (=X), futures (=F), indices (^), and crypto pairs.
+        allowed = {"equity", "etf", "mutualfund"}
+        filtered = [
+            r for r in quotes
+            if r.get("symbol")
+            and not r["symbol"].endswith("=X")
+            and not r["symbol"].endswith("=F")
+            and not r["symbol"].startswith("^")
+            and r.get("quoteType", "").lower() in allowed
+        ]
         return [
             schemas.TickerSearchResult(
-                ticker=r.get("symbol", ""),
-                name=r.get("longname") or r.get("shortname") or "",
+                ticker=r["symbol"],
+                name=r.get("longname") or r.get("shortname") or r["symbol"],
             )
-            for r in quotes if r.get("symbol")
+            for r in filtered[:8]
         ]
     except Exception:
         return []
@@ -557,3 +570,122 @@ def get_signals(ticker: str):
         hold=result["hold"],
         breakdown=result["breakdown"],
     )
+
+
+# ── Company events endpoint ───────────────────────────────────────────────────
+
+@router.get("/{ticker}/events")
+def get_stock_events(ticker: str):
+    """Return upcoming company events: next earnings date (with EPS/revenue estimates)
+    and ex-dividend date.  Uses t.calendar as primary source, falls back to
+    t.get_earnings_dates() when calendar has no earnings entry.
+    Always returns a list (empty if nothing found) — never raises 404.
+    """
+    import math
+    ticker = ticker.upper().strip()
+    t = yf.Ticker(ticker)
+    events: list[dict] = []
+    today = datetime.now().date()
+
+    def _safe_ts(val):
+        """Pandas / datetime Timestamp → date, None on failure."""
+        if val is None:
+            return None
+        try:
+            if hasattr(val, 'date'):
+                return val.date()
+            if hasattr(val, 'to_pydatetime'):
+                return val.to_pydatetime().date()
+        except Exception:
+            pass
+        return None
+
+    def _safe_num(val):
+        try:
+            f = float(val)
+            return None if math.isnan(f) else f
+        except (TypeError, ValueError):
+            return None
+
+    def _days_label(n: int) -> str:
+        if n == 0:   return "Today"
+        if n == 1:   return "Tomorrow"
+        if n == -1:  return "Yesterday"
+        if n > 0:    return f"in {n} days"
+        return f"{abs(n)} days ago"
+
+    try:
+        cal = t.calendar or {}
+        if isinstance(cal, dict):
+            # ── Earnings ──────────────────────────────────────────────────────
+            earn_dates = cal.get("Earnings Date") or []
+            if earn_dates:
+                d1 = _safe_ts(earn_dates[0])
+                d2 = _safe_ts(earn_dates[-1]) if len(earn_dates) > 1 else None
+                if d1:
+                    eps     = _safe_num(cal.get("Earnings Average"))
+                    eps_lo  = _safe_num(cal.get("Earnings Low"))
+                    eps_hi  = _safe_num(cal.get("Earnings High"))
+                    rev     = _safe_num(cal.get("Revenue Average"))
+                    diff    = (d1 - today).days
+                    events.append({
+                        "type":             "earnings",
+                        "label":            "Earnings",
+                        "date":             d1.strftime("%b %d, %Y"),
+                        "date_end":         d2.strftime("%b %d, %Y") if d2 and d2 != d1 else None,
+                        "days_until":       diff,
+                        "days_label":       _days_label(diff),
+                        "eps_estimate":     round(eps,    2) if eps    is not None else None,
+                        "eps_low":          round(eps_lo, 2) if eps_lo is not None else None,
+                        "eps_high":         round(eps_hi, 2) if eps_hi is not None else None,
+                        "revenue_estimate": int(rev)         if rev    is not None else None,
+                    })
+
+            # ── Ex-Dividend ───────────────────────────────────────────────────
+            ex_div = _safe_ts(cal.get("Ex-Dividend Date"))
+            if ex_div:
+                diff = (ex_div - today).days
+                events.append({
+                    "type":             "dividend",
+                    "label":            "Ex-Dividend",
+                    "date":             ex_div.strftime("%b %d, %Y"),
+                    "date_end":         None,
+                    "days_until":       diff,
+                    "days_label":       _days_label(diff),
+                    "eps_estimate":     None,
+                    "eps_low":          None,
+                    "eps_high":         None,
+                    "revenue_estimate": None,
+                })
+    except Exception as e:
+        logger.warning("calendar fetch failed for %s: %s", ticker, e)
+
+    # Fallback: use earnings_dates DataFrame when calendar had no earnings entry
+    if not any(e["type"] == "earnings" for e in events):
+        try:
+            edf = t.get_earnings_dates(limit=8)
+            if edf is not None and not edf.empty:
+                rep_col = "Reported EPS" if "Reported EPS" in edf.columns else None
+                future_df = edf[edf[rep_col].isna()] if rep_col else edf[edf.index >= pd.Timestamp.now(tz="UTC")]
+                if not future_df.empty:
+                    idx = future_df.index[0]
+                    d   = _safe_ts(idx) or idx.to_pydatetime().date()
+                    eps_col = "EPS Estimate" if "EPS Estimate" in future_df.columns else None
+                    eps_val = _safe_num(future_df.iloc[0][eps_col]) if eps_col else None
+                    diff    = (d - today).days
+                    events.append({
+                        "type":             "earnings",
+                        "label":            "Earnings",
+                        "date":             d.strftime("%b %d, %Y"),
+                        "date_end":         None,
+                        "days_until":       diff,
+                        "days_label":       _days_label(diff),
+                        "eps_estimate":     round(eps_val, 2) if eps_val is not None else None,
+                        "eps_low":          None,
+                        "eps_high":         None,
+                        "revenue_estimate": None,
+                    })
+        except Exception as e:
+            logger.warning("earnings_dates fallback failed for %s: %s", ticker, e)
+
+    return events

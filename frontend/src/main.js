@@ -13,10 +13,12 @@ const router = createRouter({
   routes: [
     { path: '/', redirect: '/dashboard' },
     { path: '/dashboard', component: Dashboard },
+    { path: '/recommendations', component: () => import('./views/Recommendations.vue') },
     { path: '/portfolio', component: Portfolio },
     { path: '/watchlist', component: Watchlist },
     { path: '/history', component: History },
     { path: '/news', component: News },
+    { path: '/intel', component: () => import('./views/MarketIntel.vue') },
   ],
 })
 

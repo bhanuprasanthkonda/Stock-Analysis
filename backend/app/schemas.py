@@ -231,6 +231,27 @@ class PriceResponse(BaseModel):
     day_low: Optional[float] = None
 
 
+# ── Recommendations ──────────────────────────────────────────────────────────
+
+class RecommendationItem(BaseModel):
+    ticker: str
+    company_name: Optional[str] = None
+    current_price: Optional[float] = None
+    day_change: Optional[float] = None
+    day_change_pct: Optional[float] = None
+    buy_pct: float
+    sell_pct: float
+    hold_pct: float
+    breakdown: dict[str, Any] = {}   # sma_cross, ema_cross, price_vs_sma50, volume, news_good/bad/neutral
+    top_news: list[NewsItem] = []
+    entry_price: Optional[float] = None
+    stop_loss: Optional[float] = None
+    target_1: Optional[float] = None
+    target_2: Optional[float] = None
+    risk_reward: Optional[float] = None
+    fibonacci_levels: Optional[dict] = None
+
+
 # ── Read stocks ───────────────────────────────────────────────────────────────
 
 class ReadStockOut(BaseModel):

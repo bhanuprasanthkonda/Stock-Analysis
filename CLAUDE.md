@@ -164,6 +164,7 @@ ON = solid fill in the line's hex color. OFF = text-only in grey. Example:
 | Route | View | Notes |
 |-------|------|-------|
 | `/dashboard` | Dashboard.vue | accepts `?ticker=` query param to auto-search |
+| `/recommendations` | Recommendations.vue | buy-signal cards from portfolio + watchlist tickers |
 | `/portfolio` | Portfolio.vue | clicking a ticker navigates to `/dashboard?ticker=X` |
 | `/watchlist` | Watchlist.vue | two-panel: list selector left, items table right |
 | `/history` | History.vue | same click behaviour |
@@ -220,6 +221,7 @@ Every significant function across the codebase has a JSDoc / docstring comment i
 | `_parse_news(raw)` | Flattens yfinance nested news format into `NewsItem` list |
 | `get_news(ticker)` | Returns `[]` (not 404) when no news — ETFs often have sparse coverage |
 | `get_signals(ticker)` | Composite signal using 6mo history, independent of chart period |
+| `get_stock_events(ticker)` | Next earnings date + EPS/revenue estimates + ex-dividend date; uses `t.calendar` with `get_earnings_dates()` fallback; always returns list, never 404 |
 
 ### `backend/app/routes/portfolio.py`
 | Function | Purpose |
@@ -307,3 +309,19 @@ Every significant function across the codebase has a JSDoc / docstring comment i
 | `crossLabel(v)` / `crossColor(v)` | Golden/death cross → display label + chip color |
 | `trendColor(v)` | bullish/bearish → success/error chip color |
 | `volColor(v)` | Volume signal string (contains 'bullish'/'bearish') → chip color |
+
+### `backend/app/routes/recommendations.py`
+| Function | Purpose |
+|----------|---------|
+| `_last_val(arr)` | Walk backward through SMA/EMA list to find last non-None value |
+| `get_market_pulse()` | Signal analysis for SPY/QQQ/DIA (direction + buy%) + live futures prices for ES=F/NQ=F/YM=F; all 6 fetched in parallel; must stay above `/{ticker}` route |
+| `get_recommendations()` | Collect tickers from Portfolio + WatchlistItem, run signal engine in parallel, filter buy_pct ≥ 50, return top 10 sorted by buy_pct desc; each item includes entry/stop/target from Fibonacci |
+
+### `frontend/src/views/Recommendations.vue`
+| Function | Purpose |
+|----------|---------|
+| `fetchRecs()` | GET /recommendations/ → fills `recs` ref |
+| `crossChip(val)` | sma_cross / ema_cross string → `{label, color}` for the why chip |
+| `volChip(val)` | volume signal string → `{label, color, show}` or null when normal |
+| `newsChip(bd)` | breakdown dict → `{label, color}` based on good vs bad news counts |
+| `buyChipColor(pct)` | buy_pct → 'success' (≥ 65) or 'warning' |

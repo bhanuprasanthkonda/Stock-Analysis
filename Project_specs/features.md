@@ -43,8 +43,8 @@ S&P Fut. (`ES=F`) · Dow Fut. (`YM=F`) · Nasdaq Fut. (`NQ=F`) · Russell Fut. (
 - Candlestick chart with green/red wicks
 - Volume bars at the bottom 20% of the chart (green = up day, red = down day)
 
-**Period selector** (10 buttons):
-`1D` `1W` `1M` `3M` `6M` `YTD` `1Y` `2Y` `5Y` `MAX`
+**Period selector** (9 buttons):
+`1D` `1W` `1M` `3M` `6M` `YTD` `1Y` `5Y` `MAX`
 
 **Candle interval selector** (7 buttons):
 `1m` `5m` `15m` `30m` `1h` `1D` `1W`
@@ -89,6 +89,15 @@ The view position is preserved so you see the newly loaded bars without jumping.
 ### News Feed
 - Latest headlines with publisher, timestamp, and sentiment chip (Good / Bad / Neutral)
 - Related ticker chips shown on each news card; clicking a ticker navigates to its Dashboard; each chip has an ✕ to dismiss it from that card
+
+### Upcoming Events
+
+Shown below the Trade Setup card whenever a stock has known upcoming events from yfinance. Not shown for ETFs or tickers with no calendar data.
+
+- **Earnings** — next quarterly earnings date (or date range if yfinance returns an estimate window), countdown chip (red if ≤ 7 days, amber if > 7, grey if past), EPS estimate, EPS low/high range, and revenue estimate where available
+- **Ex-Dividend** — ex-dividend date and countdown chip
+- Data fetched from `yf.Ticker.calendar`; falls back to `get_earnings_dates()` if `calendar` has no earnings entry
+- Fetched in parallel with stock / news / signals — never blocks the main render
 
 ### Trade Setup
 
@@ -173,6 +182,62 @@ All levels update instantly when a custom entry price is typed.
 - **Last updated timestamp** — shown next to the page title after the first load/refresh
 - "Clear" button resets the table and clears all loaded tickers
 - Headlines deduplicated by title across tickers; sorted newest-first
+
+---
+
+## Recommendations
+
+Dedicated page that surfaces buy-signal stocks from the user's existing portfolio and watchlists, giving actionable entry/exit levels and the specific reasons why each stock is recommended.
+
+### Market Pulse
+
+A compact market-context panel shown at the top of the Recommendations page, fetched in parallel with individual recommendations.
+
+- **Index cards (SPY / QQQ / DIA):** label (S&P 500 / NASDAQ 100 / Dow Jones), current price, day change %, signal direction chip (Bullish ≥ 55% buy · Bearish ≥ 55% sell · Neutral otherwise), buy% shown below chip; clicking a card opens its Dashboard
+- **Futures strip (ES=F / NQ=F / YM=F):** label (S&P Futures / NASDAQ Futures / Dow Futures), current price, day change % with ↑/↓ color arrow
+- All 6 items fetched in parallel via `ThreadPoolExecutor` (separate from the individual-stock analysis pool)
+- A small refresh button re-fetches pulse data on demand
+
+### Stock Recommendations
+
+- **Source:** Union of all tickers in Portfolio + all Watchlist items — no manual setup needed
+- **Signal engine:** same composite scoring as Dashboard Signals (SMA/EMA crosses, price vs MA 50, volume, news sentiment), run on 6 months of daily history
+- **Filter:** only stocks with `buy_pct ≥ 50%` are shown, sorted highest first (up to 10)
+- **Cards** — one card per stock, showing:
+  - Ticker (click → Dashboard) · Company name
+  - Current price · Day change $ + %
+  - **BUY %** chip (green ≥ 65%, amber 50–64%)
+  - **Why chips:** Golden/Death Cross (SMA & EMA), Volume direction (↑/↓), Positive/Negative/Mixed News count
+  - **Trade Setup row:** Entry · Stop · T1 · T2 · R/R — Fibonacci levels from the 60-day high/low, matching the Dashboard Trade Setup logic
+  - **Latest News** — up to 3 most recent headlines with sentiment dot, publisher, and date; click → opens article in new tab
+  - **Open Dashboard** button → `/dashboard?ticker=X`
+- **Empty states:**
+  - No portfolio / watchlist tickers → "Add stocks to your portfolio or watchlists" message
+  - Tickers exist but none qualify → "No strong buy signals right now" message
+- **Refresh** button re-fetches all signals on demand
+- Data fetched in parallel via `ThreadPoolExecutor` (max 8 workers) — same pattern as Watchlist live prices
+
+---
+
+## Market Intelligence (`/intel`)
+
+Two-tab page for broad market awareness. The Economic Calendar only loads when its tab is first opened.
+
+### Tab 1 — Market News
+- Aggregates the latest news from 9 major market instruments: S&P 500 (SPY), Nasdaq 100 (QQQ), Dow Jones (DIA), Russell 2000 (IWM), VIX, Gold, Crude Oil, 10Y Treasury, US Dollar
+- Headlines are deduplicated by title and sorted newest-first (up to 40 items)
+- Table columns: Source label (S&P 500, Nasdaq 100, …), Headline (linked), Publisher, Sentiment chip, Date
+- Refresh button re-fetches all sources
+
+### Tab 2 — Economic Calendar
+- Scrapes BLS release calendar (`bls.gov`) for CPI, PPI, jobs, GDP, retail sales, and other key economic releases
+- Scrapes the Federal Reserve FOMC calendar for upcoming meeting dates
+- **Rolling window:** shows events from −15 days to +15 days around today (configurable via `days_back` / `days_forward`)
+- Table columns: Date, Time (ET), Event name, Category chip (Employment / Inflation / GDP / Federal Reserve / Housing / Trade / Manufacturing), Importance chip (High = red, Medium = amber, Low = default), Source
+- **Today's events** are highlighted with a primary-color row background and a "TODAY" chip next to the date
+- **Past events** are shown at reduced opacity so upcoming events stand out
+- Events sorted chronologically within the window
+- Category icons distinguish event types at a glance
 
 ---
 
